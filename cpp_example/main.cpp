@@ -1,15 +1,16 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <filesystem>
 #include "utoc_reader.h"
 
 int main() {
     // Since we're running from build/windows/x64/debug, we need to adjust the path
-    const std::string exampleFilesPath = "../../../../example_files";
+    const std::filesystem::path exampleFilesPath = "../../../../example_files";
     
     // Hardcode the UTOC file path since we know it exists
-    std::vector<std::string> utocFiles = {
-        exampleFilesPath + "/000_BetterHUD_P.utoc"
+    std::vector<std::filesystem::path> utocFiles = {
+        exampleFilesPath / "000_BetterHUD_P.utoc"
     };
     
     std::cout << "Processing UTOC files from: " << exampleFilesPath << std::endl;

@@ -6,29 +6,7 @@
 #include <memory>
 #include <unordered_map>
 #include <filesystem>
-
-// Simple optional implementation
-template<typename T>
-class Optional {
-public:
-    Optional() : has_value_(false) {}
-    Optional(const T& value) : has_value_(true), value_(value) {}
-    Optional(T&& value) : has_value_(true), value_(std::move(value)) {}
-    
-    bool has_value() const { return has_value_; }
-    const T& value() const { return value_; }
-    T& value() { return value_; }
-    
-    operator bool() const { return has_value_; }
-    const T& operator*() const { return value_; }
-    T& operator*() { return value_; }
-    const T* operator->() const { return &value_; }
-    T* operator->() { return &value_; }
-    
-private:
-    bool has_value_;
-    T value_;
-};
+#include <optional>
 
 namespace utoc {
 
@@ -129,15 +107,15 @@ struct FIoStoreTocCompressedBlockEntry {
 };
 
 struct FIoDirectoryIndexEntry {
-    Optional<uint32_t> name;
-    Optional<uint32_t> first_child_entry;
-    Optional<uint32_t> next_sibling_entry;
-    Optional<uint32_t> first_file_entry;
+    std::optional<uint32_t> name;
+    std::optional<uint32_t> first_child_entry;
+    std::optional<uint32_t> next_sibling_entry;
+    std::optional<uint32_t> first_file_entry;
 };
 
 struct FIoFileIndexEntry {
     uint32_t name;
-    Optional<uint32_t> next_file_entry;
+    std::optional<uint32_t> next_file_entry;
     uint32_t user_data;
 };
 
@@ -200,7 +178,7 @@ public:
     UtocReader& operator=(UtocReader&&) = default;
 
     // Open a UTOC file
-    bool Open(const std::string& path);
+    bool Open(const std::filesystem::path& path);
 
     // Get the directory index
     const FIoDirectoryIndexResource& GetDirectoryIndex() const { return directory_index_; }
@@ -217,7 +195,7 @@ private:
 
     // Read optional value
     template<typename T>
-    Optional<T> ReadOptional(const uint8_t* data, size_t& offset);
+    std::optional<T> ReadOptional(const uint8_t* data, size_t& offset);
 
     // Read string
     std::string ReadString(const uint8_t* data, size_t& offset);

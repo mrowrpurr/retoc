@@ -1,8 +1,4 @@
 {
-    depfiles_format = "cl_json",
-    files = {
-        [[cpp_src\utoc_reader.cpp]]
-    },
     values = {
         [[C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\bin\HostX64\x64\cl.exe]],
         {
@@ -16,6 +12,7 @@
             "/EHsc"
         }
     },
+    depfiles_format = "cl_json",
     depfiles = "{\
     \"Version\": \"1.2\",\
     \"Data\": {\
@@ -181,5 +178,8 @@
         \"ImportedModules\": [],\
         \"ImportedHeaderUnits\": []\
     }\
-}"
+}",
+    files = {
+        [[cpp_src\utoc_reader.cpp]]
+    }
 }

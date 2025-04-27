@@ -80,12 +80,12 @@ T ReadValue(const uint8_t* data, size_t& offset) {
 
 // Read optional value
 template<typename T>
-Optional<T> UtocReader::ReadOptional(const uint8_t* data, size_t& offset) {
+std::optional<T> UtocReader::ReadOptional(const uint8_t* data, size_t& offset) {
     uint32_t value = ReadValue<uint32_t>(data, offset);
     if (value == UINT32_MAX) {
-        return Optional<T>();
+        return std::nullopt;
     }
-    return Optional<T>(static_cast<T>(value));
+    return static_cast<T>(value);
 }
 
 // Read string
@@ -143,10 +143,10 @@ std::string UtocReader::ReadString(const uint8_t* data, size_t& offset) {
     return result;
 }
 
-bool UtocReader::Open(const std::string& path) {
+bool UtocReader::Open(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        std::cerr << "Failed to open file: " << path << std::endl;
+        std::cerr << "Failed to open file: " << path.string() << std::endl;
         return false;
     }
     
