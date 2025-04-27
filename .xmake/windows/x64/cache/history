@@ -1,0 +1,30 @@
+{
+    cmdlines = {
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\explorer.lua]],
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\explorer.lua]],
+        "xmake f -p windows -a x64 -m debug -v",
+        "xmake ",
+        [[xmake lua C:\Users\mrowr\xmake\modules\private\utils\statistics.lua]],
+        [[xmake lua C:\Users\mrowr\xmake\actions\build\cleaner.lua]],
+        "xmake build",
+        "xmake check",
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\apis.lua]],
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\explorer.lua]],
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\update_intellisense.lua compile_commands clangd]],
+        "xmake check",
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\config.lua]],
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\explorer.lua]],
+        "xmake build",
+        "xmake run",
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\explorer.lua]],
+        [[xmake l c:\Users\mrowr\.vscode\extensions\tboox.xmake-vscode-2.4.0\assets\explorer.lua]],
+        "xmake check",
+        "xmake check",
+        "xmake check",
+        "xmake check",
+        "xmake check",
+        "xmake check",
+        "xmake build",
+        "xmake run"
+    }
+}
