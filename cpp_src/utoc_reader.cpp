@@ -1,9 +1,11 @@
 #include "utoc_reader.h"
+#include "ucas_reader.h"
 #include <fstream>
 #include <iostream>
 #include <algorithm>
 #include <stack>
 #include <functional>
+#include <stdexcept>
 
 namespace utoc {
 
@@ -30,33 +32,48 @@ bool FIoChunkId::HasVersionInfo() const {
 
 // FIoOffsetAndLength methods
 uint64_t FIoOffsetAndLength::GetOffset() const {
+    // The offset is stored as a 5-byte value (40 bits) in big-endian order
     uint64_t result = 0;
-    std::memcpy(&result, data, 5);
+    for (int i = 0; i < 5; ++i) {
+        result = (result << 8) | data[i];
+    }
     return result;
 }
 
 uint64_t FIoOffsetAndLength::GetLength() const {
+    // The length is stored as a 5-byte value (40 bits) in big-endian order
     uint64_t result = 0;
-    std::memcpy(&result, data + 5, 5);
+    for (int i = 0; i < 5; ++i) {
+        result = (result << 8) | data[i + 5];
+    }
     return result;
 }
 
 // FIoStoreTocCompressedBlockEntry methods
 uint64_t FIoStoreTocCompressedBlockEntry::GetOffset() const {
+    // The offset is stored as a 5-byte value (40 bits) in big-endian order
     uint64_t result = 0;
-    std::memcpy(&result, data, 5);
+    for (int i = 0; i < 5; ++i) {
+        result = (result << 8) | data[i];
+    }
     return result;
 }
 
 uint32_t FIoStoreTocCompressedBlockEntry::GetCompressedSize() const {
+    // The compressed size is stored as a 3-byte value (24 bits) in big-endian order
     uint32_t result = 0;
-    std::memcpy(&result, data + 5, 3);
+    for (int i = 0; i < 3; ++i) {
+        result = (result << 8) | data[i + 5];
+    }
     return result;
 }
 
 uint32_t FIoStoreTocCompressedBlockEntry::GetUncompressedSize() const {
+    // The uncompressed size is stored as a 3-byte value (24 bits) in big-endian order
     uint32_t result = 0;
-    std::memcpy(&result, data + 8, 3);
+    for (int i = 0; i < 3; ++i) {
+        result = (result << 8) | data[i + 8];
+    }
     return result;
 }
 
@@ -144,6 +161,8 @@ std::string UtocReader::ReadString(const uint8_t* data, size_t& offset) {
 }
 
 bool UtocReader::Open(const std::filesystem::path& path) {
+    file_path_ = path;
+    
     std::ifstream file(path, std::ios::binary);
     if (!file) {
         std::cerr << "Failed to open file: " << path.string() << std::endl;
@@ -248,7 +267,112 @@ bool UtocReader::Open(const std::filesystem::path& path) {
         }
     }
     
+    // Build the file to chunk map and chunk ID map
+    BuildFileToChunkMap();
+    
     return true;
+}
+
+bool UtocReader::OpenUcas() {
+    if (!ucas_reader_) {
+        ucas_reader_ = std::make_unique<UcasReader>();
+    }
+    
+    std::filesystem::path ucas_path = file_path_;
+    ucas_path.replace_extension("ucas");
+    
+    return ucas_reader_->Open(ucas_path);
+}
+
+void UtocReader::BuildFileToChunkMap() {
+    // Build path to chunk index map
+    for (const auto& [user_data, path] : file_map_) {
+        if (!path.empty()) {
+            path_to_chunk_map_[path] = user_data;
+        }
+    }
+    
+    // Build chunk ID to index map
+    for (uint32_t i = 0; i < chunk_ids_.size(); ++i) {
+        chunk_id_map_[chunk_ids_[i]] = i;
+    }
+}
+
+std::optional<uint32_t> UtocReader::GetChunkIndexById(const FIoChunkId& chunk_id) const {
+    auto it = chunk_id_map_.find(chunk_id);
+    if (it != chunk_id_map_.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+std::optional<uint32_t> UtocReader::GetChunkIndexByPath(const std::string& path) const {
+    auto it = path_to_chunk_map_.find(path);
+    if (it != path_to_chunk_map_.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+std::vector<uint8_t> UtocReader::ReadChunkByIndex(uint32_t index) const {
+    if (index >= chunk_ids_.size()) {
+        throw std::out_of_range("Chunk index out of range");
+    }
+    
+    // Ensure UCAS reader is initialized
+    if (!ucas_reader_) {
+        if (!const_cast<UtocReader*>(this)->OpenUcas()) {
+            throw std::runtime_error("Failed to open UCAS file");
+        }
+    }
+    
+    // Get chunk information
+    const FIoOffsetAndLength& offsetLength = chunk_offset_lengths_[index];
+    const FIoStoreTocEntryMeta& meta = chunk_metas_[index];
+    bool isCompressed = meta.IsCompressed();
+    
+    // Validate chunk size and offset
+    uint64_t offset = offsetLength.GetOffset();
+    uint64_t length = offsetLength.GetLength();
+    
+    // Check for unreasonable chunk sizes (greater than 100MB)
+    const uint64_t MAX_REASONABLE_CHUNK_SIZE = 100 * 1024 * 1024; // 100MB
+    if (length > MAX_REASONABLE_CHUNK_SIZE) {
+        std::cerr << "Unreasonably large chunk size: " << length << " bytes" << std::endl;
+        throw std::runtime_error("Chunk size is too large, likely corrupted data");
+    }
+    
+    try {
+        // Read the chunk data
+        return ucas_reader_->ReadChunk(offsetLength, compression_blocks_, compression_methods_, isCompressed);
+    } catch (const std::bad_alloc& e) {
+        // Handle memory allocation errors
+        std::cerr << "Memory allocation error when reading chunk: " << e.what() << std::endl;
+        std::cerr << "Chunk size: " << length << " bytes" << std::endl;
+        throw std::runtime_error("Failed to allocate memory for chunk data");
+    } catch (const std::exception& e) {
+        // Handle other errors
+        std::cerr << "Error reading chunk: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::vector<uint8_t> UtocReader::ReadChunkById(const FIoChunkId& chunk_id) const {
+    auto index = GetChunkIndexById(chunk_id);
+    if (!index) {
+        throw std::runtime_error("Chunk ID not found");
+    }
+    
+    return ReadChunkByIndex(*index);
+}
+
+std::vector<uint8_t> UtocReader::ReadChunkByPath(const std::string& path) const {
+    auto index = GetChunkIndexByPath(path);
+    if (!index) {
+        throw std::runtime_error("Path not found: " + path);
+    }
+    
+    return ReadChunkByIndex(*index);
 }
 
 bool UtocReader::ParseDirectoryIndex(const std::vector<uint8_t>& data) {
@@ -276,9 +400,6 @@ bool UtocReader::ParseDirectoryIndex(const std::vector<uint8_t>& data) {
         directory_index_.file_entries[i].name = ReadValue<uint32_t>(data.data(), offset);
         directory_index_.file_entries[i].next_file_entry = ReadOptional<uint32_t>(data.data(), offset);
         directory_index_.file_entries[i].user_data = ReadValue<uint32_t>(data.data(), offset);
-        
-        // Map user_data (chunk index) to file path for quick lookup
-        file_map_[directory_index_.file_entries[i].user_data] = "";
     }
     
     // Read string table
@@ -287,6 +408,22 @@ bool UtocReader::ParseDirectoryIndex(const std::vector<uint8_t>& data) {
     
     for (uint32_t i = 0; i < stringCount; ++i) {
         directory_index_.string_table[i] = ReadString(data.data(), offset);
+    }
+    
+    // Build file paths and map them to chunk indices
+    std::vector<std::string> filePaths = directory_index_.GetAllFilePaths();
+    for (const auto& filePath : filePaths) {
+        // Find the file entry for this path
+        for (uint32_t i = 0; i < directory_index_.file_entries.size(); ++i) {
+            const auto& fileEntry = directory_index_.file_entries[i];
+            std::string fileName = directory_index_.string_table[fileEntry.name];
+            
+            // Check if this file entry corresponds to the current path
+            if (filePath.find(fileName) != std::string::npos) {
+                file_map_[fileEntry.user_data] = filePath;
+                break;
+            }
+        }
     }
     
     return true;

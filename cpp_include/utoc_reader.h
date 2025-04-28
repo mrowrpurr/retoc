@@ -7,8 +7,12 @@
 #include <unordered_map>
 #include <filesystem>
 #include <optional>
+#include <functional>
 
 namespace utoc {
+
+// Forward declaration
+class UcasReader;
 
 // Forward declarations
 class UtocReader;
@@ -71,6 +75,22 @@ struct FIoChunkId {
     uint16_t GetChunkIndex() const;
     EIoChunkType GetChunkType() const;
     bool HasVersionInfo() const;
+    
+    bool operator==(const FIoChunkId& other) const {
+        return std::memcmp(id, other.id, sizeof(id)) == 0;
+    }
+};
+
+// Custom hash function for FIoChunkId
+struct FIoChunkIdHash {
+    size_t operator()(const FIoChunkId& chunk_id) const {
+        // Simple hash function that combines the bytes of the chunk ID
+        size_t hash = 0;
+        for (size_t i = 0; i < sizeof(chunk_id.id); ++i) {
+            hash = hash * 31 + chunk_id.id[i];
+        }
+        return hash;
+    }
 };
 
 struct FIoOffsetAndLength {
@@ -180,6 +200,9 @@ public:
     // Open a UTOC file
     bool Open(const std::filesystem::path& path);
 
+    // Open the corresponding UCAS file
+    bool OpenUcas();
+
     // Get the directory index
     const FIoDirectoryIndexResource& GetDirectoryIndex() const { return directory_index_; }
 
@@ -188,6 +211,36 @@ public:
 
     // Get the TOC header
     const FIoStoreTocHeader& GetHeader() const { return header_; }
+
+    // Get chunk IDs
+    const std::vector<FIoChunkId>& GetChunkIds() const { return chunk_ids_; }
+
+    // Get chunk offset and lengths
+    const std::vector<FIoOffsetAndLength>& GetChunkOffsetLengths() const { return chunk_offset_lengths_; }
+
+    // Get compression blocks
+    const std::vector<FIoStoreTocCompressedBlockEntry>& GetCompressionBlocks() const { return compression_blocks_; }
+
+    // Get compression methods
+    const std::vector<std::string>& GetCompressionMethods() const { return compression_methods_; }
+
+    // Get chunk metas
+    const std::vector<FIoStoreTocEntryMeta>& GetChunkMetas() const { return chunk_metas_; }
+
+    // Read a chunk by index
+    std::vector<uint8_t> ReadChunkByIndex(uint32_t index) const;
+
+    // Read a chunk by ID
+    std::vector<uint8_t> ReadChunkById(const FIoChunkId& chunk_id) const;
+
+    // Read a chunk by path
+    std::vector<uint8_t> ReadChunkByPath(const std::string& path) const;
+
+    // Get chunk index by ID
+    std::optional<uint32_t> GetChunkIndexById(const FIoChunkId& chunk_id) const;
+
+    // Get chunk index by path
+    std::optional<uint32_t> GetChunkIndexByPath(const std::string& path) const;
 
 private:
     // Parse the directory index
@@ -200,6 +253,9 @@ private:
     // Read string
     std::string ReadString(const uint8_t* data, size_t& offset);
 
+    // Build file to chunk index map
+    void BuildFileToChunkMap();
+
     FIoStoreTocHeader header_;
     std::vector<FIoChunkId> chunk_ids_;
     std::vector<FIoOffsetAndLength> chunk_offset_lengths_;
@@ -210,6 +266,10 @@ private:
     std::vector<FIoStoreTocEntryMeta> chunk_metas_;
     FIoDirectoryIndexResource directory_index_;
     std::unordered_map<uint32_t, std::string> file_map_;
+    std::unordered_map<std::string, uint32_t> path_to_chunk_map_;
+    std::unordered_map<FIoChunkId, uint32_t, FIoChunkIdHash> chunk_id_map_;
+    std::filesystem::path file_path_;
+    mutable std::unique_ptr<UcasReader> ucas_reader_;
 };
 
 } // namespace utoc
