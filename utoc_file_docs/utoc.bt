@@ -1,0 +1,331 @@
+//------------------------------------------------
+//--- 010 Editor v12.0 Binary Template
+//
+//      File: utoc.bt
+//   Authors: Cline
+//   Version: 1.0
+//   Purpose: Parse Unreal Engine .utoc (Table of Contents) files
+//  Category: Game
+// File Mask: *.utoc
+//  ID Bytes: 2D 3D 3D 2D 2D 3D 3D 2D 2D 3D 3D 2D 2D 3D 3D 2D
+//   History:
+//   1.0 - Initial release
+//------------------------------------------------
+
+// Define endianness
+LittleEndian();
+
+// Color definitions for better visualization
+#define COLOR_HEADER 0xB3ECFF
+#define COLOR_CHUNK_ID 0xFFB3B3
+#define COLOR_OFFSET 0xB3FFB3
+#define COLOR_HASH 0xFFD9B3
+#define COLOR_COMP 0xD9B3FF
+#define COLOR_DIR 0xB3D9FF
+#define COLOR_META 0xFFFFB3
+
+// Enums
+enum<ubyte> EIoStoreTocVersion {
+  Invalid = 0,
+  Initial = 1,
+  DirectoryIndex = 2,
+  PartitionSize = 3,
+  PerfectHash = 4,
+  PerfectHashWithOverflow = 5,
+  OnDemandMetaData = 6,
+  RemovedOnDemandMetaData = 7,
+  ReplaceIoChunkHashWithIoHash = 8
+};
+
+enum<ubyte> EIoChunkType {
+  Invalid = 0,
+  ExportBundleData = 1,
+  BulkData = 2,
+  OptionalBulkData = 3,
+  MemoryMappedBulkData = 4,
+  ScriptObjects = 5,
+  ContainerHeader = 6,
+  ExternalFile = 7,
+  ShaderCodeLibrary = 8,
+  ShaderCode = 9,
+  PackageStoreEntry = 10,
+  DerivedData = 11,
+  EditorDerivedData = 12,
+  PackageResource = 13
+};
+
+// Bitflags
+typedef struct {
+  ubyte value;
+
+  // Accessor functions
+  bool Compressed() { return (value & 0x01) != 0; }
+  bool Encrypted() { return (value & 0x02) != 0; }
+  bool Signed() { return (value & 0x04) != 0; }
+  bool Indexed() { return (value & 0x08) != 0; }
+} EIoContainerFlags<read = ReadEIoContainerFlags>;
+
+string ReadEIoContainerFlags(EIoContainerFlags &flags) {
+  string s = "";
+  if (flags.Compressed())
+    s += "Compressed ";
+  if (flags.Encrypted())
+    s += "Encrypted ";
+  if (flags.Signed())
+    s += "Signed ";
+  if (flags.Indexed())
+    s += "Indexed ";
+  return s;
+}
+
+typedef struct {
+  ubyte value;
+
+  // Accessor functions
+  bool Compressed() { return (value & 0x01) != 0; }
+  bool MemoryMapped() { return (value & 0x02) != 0; }
+} FIoStoreTocEntryMetaFlags<read = ReadFIoStoreTocEntryMetaFlags>;
+
+string ReadFIoStoreTocEntryMetaFlags(FIoStoreTocEntryMetaFlags &flags) {
+  string s = "";
+  if (flags.Compressed())
+    s += "Compressed ";
+  if (flags.MemoryMapped())
+    s += "MemoryMapped ";
+  return s;
+}
+
+// GUID structure
+typedef struct {
+  uint32 a;
+  uint32 b;
+  uint32 c;
+  uint32 d;
+} FGuid<read = ReadFGuid>;
+
+string ReadFGuid(FGuid &guid) {
+  string s;
+  SPrintf(s, "%08X-%08X-%08X-%08X", guid.a, guid.b, guid.c, guid.d);
+  return s;
+}
+
+// Chunk ID structure
+typedef struct {
+  uint64 chunk_id;
+  uint16 chunk_index;
+  ubyte chunk_type_raw;
+  ubyte version_bits;
+
+  // Accessor functions
+  EIoChunkType ChunkType() { return (EIoChunkType)(chunk_type_raw & 0x3F); }
+
+  bool HasVersion() { return (version_bits & 0x40) != 0; }
+
+  bool IsNew() { return (version_bits & 0x80) != 0; }
+} FIoChunkId<read = ReadFIoChunkId>;
+
+string ReadFIoChunkId(FIoChunkId &id) {
+  string s;
+  SPrintf(s, "ID: %016llX, Index: %d, Type: %s", id.chunk_id, id.chunk_index,
+          EnumToString(id.ChunkType()));
+  return s;
+}
+
+// Offset and Length structure (10 bytes)
+typedef struct {
+  ubyte offset_bytes[5];
+  ubyte length_bytes[5];
+
+  // Accessor functions
+  uint64 GetOffset() {
+    uint64 result = 0;
+    for (int i = 0; i < 5; i++) {
+      result |= ((uint64)offset_bytes[i] << (8 * (4 - i)));
+    }
+    return result;
+  }
+
+  uint64 GetLength() {
+    uint64 result = 0;
+    for (int i = 0; i < 5; i++) {
+      result |= ((uint64)length_bytes[i] << (8 * (4 - i)));
+    }
+    return result;
+  }
+} FIoOffsetAndLength<read = ReadFIoOffsetAndLength>;
+
+string ReadFIoOffsetAndLength(FIoOffsetAndLength &ol) {
+  string s;
+  SPrintf(s, "Offset: 0x%llX, Length: 0x%llX", ol.GetOffset(), ol.GetLength());
+  return s;
+}
+
+// Compressed Block Entry structure (12 bytes)
+typedef struct {
+  ubyte offset_bytes[5];
+  ubyte compressed_size_bytes[3];
+  ubyte uncompressed_size_bytes[3];
+  ubyte compression_method_index;
+
+  // Accessor functions
+  uint64 GetOffset() {
+    uint64 result = 0;
+    for (int i = 0; i < 5; i++) {
+      result |= ((uint64)offset_bytes[i] << (8 * i));
+    }
+    return result;
+  }
+
+  uint32 GetCompressedSize() {
+    uint32 result = 0;
+    for (int i = 0; i < 3; i++) {
+      result |= ((uint32)compressed_size_bytes[i] << (8 * i));
+    }
+    return result;
+  }
+
+  uint32 GetUncompressedSize() {
+    uint32 result = 0;
+    for (int i = 0; i < 3; i++) {
+      result |= ((uint32)uncompressed_size_bytes[i] << (8 * i));
+    }
+    return result;
+  }
+} FIoStoreTocCompressedBlockEntry<read = ReadFIoStoreTocCompressedBlockEntry>;
+
+string
+ReadFIoStoreTocCompressedBlockEntry(FIoStoreTocCompressedBlockEntry &block) {
+  string s;
+  SPrintf(s, "Offset: 0x%llX, CompSize: 0x%X, UncompSize: 0x%X, Method: %d",
+          block.GetOffset(), block.GetCompressedSize(),
+          block.GetUncompressedSize(), block.compression_method_index);
+  return s;
+}
+
+// Chunk Hash structure
+typedef struct {
+  ubyte data[32];
+} FIoChunkHash<read = ReadFIoChunkHash>;
+
+string ReadFIoChunkHash(FIoChunkHash &hash) {
+  string s = "";
+  for (int i = 0; i < 20;
+       i++) { // Only show first 20 bytes as that's what's used
+    string temp;
+    SPrintf(temp, "%02X", hash.data[i]);
+    s += temp;
+  }
+  return s;
+}
+
+// SHA Hash structure
+typedef struct {
+  ubyte data[20];
+} FSHAHash<read = ReadFSHAHash>;
+
+string ReadFSHAHash(FSHAHash &hash) {
+  string s = "";
+  for (int i = 0; i < 20; i++) {
+    string temp;
+    SPrintf(temp, "%02X", hash.data[i]);
+    s += temp;
+  }
+  return s;
+}
+
+// Chunk Metadata structure
+typedef struct {
+  if (header.version >= EIoStoreTocVersion::ReplaceIoChunkHashWithIoHash) {
+    ubyte hash_data[20];
+    FIoStoreTocEntryMetaFlags flags;
+    ubyte padding[3];
+  } else {
+    FIoChunkHash chunk_hash;
+    FIoStoreTocEntryMetaFlags flags;
+  }
+} FIoStoreTocEntryMeta;
+
+// Signatures structure (optional)
+typedef struct {
+  uint32 size;
+  ubyte toc_signature[size];
+  ubyte block_signature[size];
+  FSHAHash chunk_block_signatures[header.toc_compressed_block_entry_count];
+} TocSignatures;
+
+// Header structure
+typedef struct {
+  SetBackColor(COLOR_HEADER);
+  char toc_magic[16]; // "-==--==--==--==-"
+  EIoStoreTocVersion version;
+  ubyte reserved0;
+  uint16 reserved1;
+  uint32 toc_header_size; // 0x90 = 144 bytes
+  uint32 toc_entry_count;
+  uint32 toc_compressed_block_entry_count;
+  uint32 toc_compressed_block_entry_size; // 12 bytes
+  uint32 compression_method_name_count;
+  uint32 compression_method_name_length; // 32 bytes
+  uint32 compression_block_size;
+  uint32 directory_index_size;
+  uint32 partition_count;
+  uint64 container_id;
+  FGuid encryption_key_guid;
+  EIoContainerFlags container_flags;
+  ubyte reserved3;
+  uint16 reserved4;
+  uint32 toc_chunk_perfect_hash_seeds_count;
+  uint64 partition_size;
+  uint32 toc_chunks_without_perfect_hash_count;
+  uint32 reserved7;
+  uint64 reserved8[5];
+} FIoStoreTocHeader;
+
+// Main file structure
+struct {
+  // Header
+  FIoStoreTocHeader header;
+
+  // Chunk IDs
+  SetBackColor(COLOR_CHUNK_ID);
+  FIoChunkId chunk_ids[header.toc_entry_count];
+
+  // Chunk Offsets and Lengths
+  SetBackColor(COLOR_OFFSET);
+  FIoOffsetAndLength chunk_offset_lengths[header.toc_entry_count];
+
+  // Hash Map (if present)
+  if (header.version >= EIoStoreTocVersion::PerfectHash) {
+    SetBackColor(COLOR_HASH);
+    int32 chunk_perfect_hash_seeds[header.toc_chunk_perfect_hash_seeds_count];
+
+    if (header.version >= EIoStoreTocVersion::PerfectHashWithOverflow) {
+      int32 chunk_indices_without_perfect_hash
+          [header.toc_chunks_without_perfect_hash_count];
+    }
+  }
+
+  // Compression Blocks
+  SetBackColor(COLOR_COMP);
+  FIoStoreTocCompressedBlockEntry
+      compression_blocks[header.toc_compressed_block_entry_count];
+
+  // Compression Methods
+  local int i;
+  for (i = 0; i < header.compression_method_name_count; i++) {
+    char compression_method_name[header.compression_method_name_length];
+  }
+
+  // Signatures (if present)
+  if (header.container_flags.Signed()) {
+    TocSignatures signatures;
+  }
+
+  // Directory Index
+  SetBackColor(COLOR_DIR);
+  ubyte directory_index[header.directory_index_size];
+
+  // Chunk Metadata
+  SetBackColor(COLOR_META);
+  FIoStoreTocEntryMeta chunk_metas[header.toc_entry_count];
+} UtocFile;

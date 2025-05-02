@@ -1,0 +1,127 @@
+//------------------------------------------------
+//--- 010 Editor v12.0 Binary Template
+//
+//      File: ucas_advanced.bt
+//   Authors: Cline
+//   Version: 1.0
+//   Purpose: Parse Unreal Engine UCAS (Unreal Content Archive Storage) files
+//   with UTOC metadata
+//  Category: Game
+// File Mask: *.ucas
+//  ID Bytes:
+//   History:
+//   1.0 - Initial release
+//------------------------------------------------
+
+// This is an advanced template for UCAS files that can work with metadata from
+// a UTOC file You'll need to manually input some values from the UTOC file to
+// properly parse the UCAS file
+
+// Define colors for different block types
+#define COLOR_BLOCK 0xC8FFFF        // Light cyan
+#define COLOR_COMPRESSED 0xFFD0D0   // Light red
+#define COLOR_UNCOMPRESSED 0xD0FFD0 // Light green
+
+// Compression methods
+enum<byte> CompressionMethod {
+  None = 0,
+  Zlib = 1,
+  Zstd = 2,
+  LZ4 = 3,
+  Oodle = 4
+};
+
+// Define a data block structure
+typedef struct {
+  local quad blockOffset = FTell();
+  local string blockInfo;
+
+  // Parameters to be filled from UTOC
+  local quad compressedSize = ReadUInt(FTell());
+  local quad uncompressedSize =
+      compressedSize; // Default to same if not compressed
+  local CompressionMethod compressionMethod = None;
+
+  if (compressionMethod == None) {
+    blockInfo = "Uncompressed";
+    ubyte uncompressedData[compressedSize]<bgcolor = COLOR_UNCOMPRESSED>;
+  } else {
+    blockInfo = "Compressed";
+    ubyte compressedData[compressedSize]<bgcolor = COLOR_COMPRESSED>;
+  }
+} DataBlock<read = DataBlockRead>;
+
+string DataBlockRead(DataBlock &block) {
+  string s;
+  SPrintf(s, "Offset: 0x%X, Size: %d bytes, %s", block.blockOffset,
+          block.compressedSize, block.blockInfo);
+  return s;
+}
+
+// Define a chunk structure (multiple blocks)
+typedef struct {
+  local quad chunkOffset = FTell();
+  local quad chunkSize;
+  local string chunkName;
+  local string chunkType;
+
+  // These values need to be set manually based on UTOC data
+  local int blockCount = 1; // Default to 1 if unknown
+
+  // Read the blocks
+  DataBlock blocks[blockCount];
+} Chunk<read = ChunkRead>;
+
+string ChunkRead(Chunk &chunk) {
+  string s;
+  SPrintf(s, "Chunk: %s, Type: %s, Offset: 0x%X, Size: %d bytes, Blocks: %d",
+          chunk.chunkName, chunk.chunkType, chunk.chunkOffset, chunk.chunkSize,
+          chunk.blockCount);
+  return s;
+}
+
+// Main structure for the UCAS file
+struct UcasFile {
+  // UCAS files consist of a series of chunks
+  // Without UTOC metadata, we can only show a single chunk with raw data
+
+  // To properly parse the file, you need to:
+  // 1. Set the number of chunks
+  // 2. For each chunk, set the chunk name, type, and size
+  // 3. For each block in each chunk, set the compressed size, uncompressed
+  // size, and compression method
+
+  local int chunkCount = 1; // Default to 1 if unknown
+
+  // Read the chunks
+  if (chunkCount == 1) {
+    // If we don't have UTOC data, just show the raw data
+    local quad fileSize = FileSize();
+    ubyte rawData[fileSize]<bgcolor = COLOR_BLOCK>;
+  } else {
+    Chunk chunks[chunkCount];
+  }
+};
+
+// Parse the file
+UcasFile ucasFile;
+
+// Display information about the file
+Printf("UCAS File Information:\n");
+Printf("---------------------\n");
+Printf("File Size: %d bytes\n", FileSize());
+Printf("\n");
+Printf("Note: This template shows a basic view of the UCAS file.\n");
+Printf(
+    "To see a more detailed view with proper chunk and block information,\n");
+Printf(
+    "you need to manually input metadata from the corresponding UTOC file.\n");
+Printf("\n");
+Printf("Instructions:\n");
+Printf("1. Open the UTOC file and extract the following information:\n");
+Printf("   - Number of chunks\n");
+Printf("   - For each chunk: name, type, size, and number of blocks\n");
+Printf("   - For each block: compressed size, uncompressed size, and "
+       "compression method\n");
+Printf("2. Modify this template to include that information\n");
+Printf("3. Re-run the template to see a more detailed view of the UCAS file\n");

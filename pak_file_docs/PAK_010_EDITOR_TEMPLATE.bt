@@ -1,0 +1,430 @@
+//------------------------------------------------
+//--- 010 Editor v12.0 Binary Template
+//
+//      File: PAK_Template.bt
+//   Authors: Cline
+//   Version: 1.0
+//   Purpose: Parse Unreal Engine .pak files
+//  Category: Game
+// File Mask: *.pak
+//  ID Bytes: 5A 6F 12 E1
+//   History:
+//   1.0 - Initial release
+//------------------------------------------------
+
+// Define colors for better visualization
+#define COLOR_HEADER 0xB3ECFF
+#define COLOR_INDEX 0xFFB3EC
+#define COLOR_ENTRY 0xECFFB3
+#define COLOR_FOOTER 0xFFECB3
+#define COLOR_HASH 0xB3FFB3
+#define COLOR_BLOCK 0xB3B3FF
+#define COLOR_STRING 0xFFB3B3
+
+// Define endianness (PAK files use little-endian)
+LittleEndian();
+
+// Define basic types
+typedef uint32 MAGIC<format = hex>;
+typedef uint32 VERSION;
+typedef uint64 OFFSET;
+typedef uint64 SIZE;
+typedef ubyte HASH[20];
+typedef ubyte GUID[16];
+typedef ubyte BOOL;
+
+// String reading functions
+string ReadString(int64 pos) {
+  local int64 savePos = FTell();
+  FSeek(pos);
+
+  local int32 length = ReadInt();
+  local string result;
+
+  if (length < 0) {
+    // UTF-16 string (negative length)
+    length = -length;
+    local wchar_t buffer[length];
+    ReadWString(buffer);
+    result = buffer;
+  } else {
+    // ASCII string
+    local char buffer[length];
+    ReadString(buffer);
+    result = buffer;
+  }
+
+  FSeek(savePos);
+  return result;
+}
+
+// Forward declarations
+struct Entry;
+struct Block;
+struct EncodedEntry;
+struct PathHashIndexEntry;
+struct DirectoryEntry;
+struct FileEntry;
+
+// Main PAK file structure
+struct PAK {
+  // First, we need to determine the version to know the footer size
+  // We'll read the magic number from the expected position for the latest
+  // version
+  local int64 fileSize = FileSize();
+  local int64 footerPos = fileSize - 213; // Size of V11 footer
+
+  // Try to find the magic number
+  FSeek(footerPos + 17); // Skip UUID (16 bytes) and encrypted flag (1 byte)
+  local MAGIC magicTest = ReadUInt();
+
+  if (magicTest != 0x5A6F12E1) {
+    // Try other footer sizes
+    local int64 footerSizes[] = {36, 37, 53, 181, 213, 214};
+    local int i;
+    local BOOL found = false;
+
+    for (i = 0; i < sizeof(footerSizes) / sizeof(footerSizes[0]); i++) {
+      footerPos = fileSize - footerSizes[i];
+      if (footerPos < 0)
+        continue;
+
+      if (footerSizes[i] >= 53) {
+        // Version with UUID
+        FSeek(footerPos + 17);
+      } else if (footerSizes[i] >= 37) {
+        // Version with encrypted flag
+        FSeek(footerPos + 1);
+      } else {
+        // Early version
+        FSeek(footerPos);
+      }
+
+      magicTest = ReadUInt();
+      if (magicTest == 0x5A6F12E1) {
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      Warning("Could not find valid PAK magic number. File may be corrupted or "
+              "not a PAK file.");
+      return;
+    }
+  }
+
+  // Now we know the footer position, read the footer
+  FSeek(footerPos);
+  Footer footer<bgcolor = COLOR_FOOTER>;
+
+  // Read the index
+  FSeek(footer.indexOffset);
+  Index index<bgcolor = COLOR_INDEX>;
+
+  // If we have secondary indices (V10+), read them
+  if (footer.version >= 10) {
+    if (index.hasPathHashIndex) {
+      FSeek(index.pathHashIndexOffset);
+      PathHashIndex pathHashIndex<bgcolor = COLOR_INDEX>;
+    }
+
+    if (index.hasFullDirectoryIndex) {
+      FSeek(index.fullDirectoryIndexOffset);
+      FullDirectoryIndex fullDirectoryIndex<bgcolor = COLOR_INDEX>;
+    }
+  }
+};
+
+// Footer structure
+struct Footer {
+  if (FTell() + 53 <= FileSize()) {
+    // V7+ has encryption UUID
+    GUID encryptionUuid<bgcolor = COLOR_HASH>;
+  }
+
+  if (FTell() + 37 <= FileSize()) {
+    // V4+ has encrypted index flag
+    BOOL encrypted<bgcolor = COLOR_HEADER>;
+  }
+
+  MAGIC magic<bgcolor = COLOR_HEADER>;
+  VERSION version<bgcolor = COLOR_HEADER>;
+  OFFSET indexOffset<bgcolor = COLOR_HEADER>;
+  SIZE indexSize<bgcolor = COLOR_HEADER>;
+  HASH indexHash<bgcolor = COLOR_HASH>;
+
+  if (version == 9) {
+    // V9 has frozen index flag
+    BOOL frozen<bgcolor = COLOR_HEADER>;
+  }
+
+  if (version >= 8) {
+    // V8+ has compression method names
+    local int compressionCount =
+        (version == 8 && FTell() + 32 * 5 > FileSize()) ? 4 : 5;
+    char compressionMethods[compressionCount][32]<bgcolor = COLOR_HEADER>;
+  }
+};
+
+// Index structure
+struct Index {
+  // Read the mount point
+  local int64 stringPos = FTell();
+  local int32 mountPointLength = ReadInt();
+  FSkip(4); // Go back to read the full string
+
+  if (mountPointLength < 0) {
+    // UTF-16 string
+    int32 mountPointLengthUtf16<bgcolor = COLOR_STRING>;
+    wchar_t mountPoint[-mountPointLengthUtf16]<bgcolor = COLOR_STRING>;
+  } else {
+    // ASCII string
+    int32 mountPointLengthAscii<bgcolor = COLOR_STRING>;
+    char mountPoint[mountPointLengthAscii]<bgcolor = COLOR_STRING>;
+  }
+
+  uint32 entryCount<bgcolor = COLOR_HEADER>;
+
+  // Check if this is V10+ with enhanced index
+  local VERSION footerVersion = 0;
+  local int64 footerPos = FileSize();
+  local int64 footerSizes[] = {36, 37, 53, 181, 213, 214};
+  local int i;
+
+  for (i = 0; i < sizeof(footerSizes) / sizeof(footerSizes[0]); i++) {
+    local int64 testPos = footerPos - footerSizes[i];
+    if (testPos < 0)
+      continue;
+
+    if (footerSizes[i] >= 53) {
+      // Version with UUID
+      FSeek(testPos + 17);
+    } else if (footerSizes[i] >= 37) {
+      // Version with encrypted flag
+      FSeek(testPos + 1);
+    } else {
+      // Early version
+      FSeek(testPos);
+    }
+
+    local MAGIC magicTest = ReadUInt();
+    if (magicTest == 0x5A6F12E1) {
+      FSkip(4);
+      footerVersion = ReadUInt();
+      break;
+    }
+  }
+
+  // Return to where we were in the index
+  FSeek(stringPos +
+        (mountPointLength < 0 ? -mountPointLength * 2 : mountPointLength) + 4);
+  FSkip(4); // Skip entry count which we already read
+
+  if (footerVersion >= 10) {
+    // V10+ has enhanced index
+    uint64 pathHashSeed<bgcolor = COLOR_HEADER>;
+
+    // Path Hash Index info
+    uint32 hasPathHashIndex<bgcolor = COLOR_HEADER>;
+    if (hasPathHashIndex != 0) {
+      OFFSET pathHashIndexOffset<bgcolor = COLOR_HEADER>;
+      SIZE pathHashIndexSize<bgcolor = COLOR_HEADER>;
+      HASH pathHashIndexHash<bgcolor = COLOR_HASH>;
+    }
+
+    // Full Directory Index info
+    uint32 hasFullDirectoryIndex<bgcolor = COLOR_HEADER>;
+    if (hasFullDirectoryIndex != 0) {
+      OFFSET fullDirectoryIndexOffset<bgcolor = COLOR_HEADER>;
+      SIZE fullDirectoryIndexSize<bgcolor = COLOR_HEADER>;
+      HASH fullDirectoryIndexHash<bgcolor = COLOR_HASH>;
+    }
+
+    // Encoded entries
+    uint32 encodedEntriesSize<bgcolor = COLOR_HEADER>;
+    if (encodedEntriesSize > 0) {
+      EncodedEntry encodedEntries[entryCount]<bgcolor = COLOR_ENTRY>;
+    }
+
+    uint32 unusedFileCount<bgcolor = COLOR_HEADER>; // Should be 0
+  } else {
+    // V1-V9 has simple index
+    local int i;
+    for (i = 0; i < entryCount; i++) {
+      // Read file path
+      local int64 stringPos = FTell();
+      local int32 pathLength = ReadInt();
+      FSkip(4); // Go back to read the full string
+
+      if (pathLength < 0) {
+        // UTF-16 string
+        int32 pathLengthUtf16<bgcolor = COLOR_STRING>;
+        wchar_t filePath[-pathLengthUtf16]<bgcolor = COLOR_STRING>;
+      } else {
+        // ASCII string
+        int32 pathLengthAscii<bgcolor = COLOR_STRING>;
+        char filePath[pathLengthAscii]<bgcolor = COLOR_STRING>;
+      }
+
+      // Read entry
+      Entry entry<bgcolor = COLOR_ENTRY>;
+    }
+  }
+};
+
+// Entry structure
+struct Entry {
+  OFFSET offset<bgcolor = COLOR_HEADER>;
+  SIZE compressedSize<bgcolor = COLOR_HEADER>;
+  SIZE uncompressedSize<bgcolor = COLOR_HEADER>;
+
+  // Compression method
+  if (footerVersion == 8 && FTell() + 4 > FileSize()) {
+    // V8A uses uint8 for compression
+    ubyte compressionMethod<bgcolor = COLOR_HEADER>;
+  } else {
+    // Other versions use uint32
+    uint32 compressionMethod<bgcolor = COLOR_HEADER>;
+  }
+
+  // V1 has timestamp
+  if (footerVersion == 1) {
+    uint64 timestamp<bgcolor = COLOR_HEADER>;
+  }
+
+  // Hash
+  HASH hash<bgcolor = COLOR_HASH>;
+
+  // V3+ with compression has blocks
+  if (footerVersion >= 3 && compressionMethod > 0) {
+    uint32 blockCount<bgcolor = COLOR_HEADER>;
+    if (blockCount > 0) {
+      Block blocks[blockCount]<bgcolor = COLOR_BLOCK>;
+    }
+  }
+
+  // V3+ has flags and block size
+  if (footerVersion >= 3) {
+    ubyte flags<bgcolor = COLOR_HEADER>;
+    uint32 compressionBlockSize<bgcolor = COLOR_HEADER>;
+  }
+};
+
+// Block structure
+struct Block {
+  OFFSET startOffset<bgcolor = COLOR_HEADER>;
+  OFFSET endOffset<bgcolor = COLOR_HEADER>;
+};
+
+// Encoded Entry structure (V10+)
+struct EncodedEntry {
+  uint32 flags<bgcolor = COLOR_HEADER>;
+
+  // Read variable-sized fields based on flags
+  if (flags & 0x80000000) {
+    // 32-bit offset
+    uint32 offset<bgcolor = COLOR_HEADER>;
+  } else {
+    // 64-bit offset
+    uint64 offset<bgcolor = COLOR_HEADER>;
+  }
+
+  if (flags & 0x40000000) {
+    // 32-bit uncompressed size
+    uint32 uncompressedSize<bgcolor = COLOR_HEADER>;
+  } else {
+    // 64-bit uncompressed size
+    uint64 uncompressedSize<bgcolor = COLOR_HEADER>;
+  }
+
+  // Compression method is in bits 23-28
+  local uint32 compressionMethod = (flags >> 23) & 0x3F;
+
+  if (compressionMethod > 0) {
+    if (flags & 0x20000000) {
+      // 32-bit compressed size
+      uint32 compressedSize<bgcolor = COLOR_HEADER>;
+    } else {
+      // 64-bit compressed size
+      uint64 compressedSize<bgcolor = COLOR_HEADER>;
+    }
+
+    // Compression block count is in bits 6-21
+    local uint32 compressionBlockCount = (flags >> 6) & 0xFFFF;
+
+    // If we have multiple blocks or encryption, read block sizes
+    if (compressionBlockCount > 1 || (flags & (1 << 22))) {
+      uint32 blockSizes[compressionBlockCount]<bgcolor = COLOR_BLOCK>;
+    }
+  }
+};
+
+// Path Hash Index (V10+)
+struct PathHashIndex {
+  uint32 entryCount<bgcolor = COLOR_HEADER>;
+  if (entryCount > 0) {
+    PathHashIndexEntry entries[entryCount]<bgcolor = COLOR_ENTRY>;
+  }
+  uint32 terminator<bgcolor = COLOR_HEADER>; // Should be 0
+};
+
+// Path Hash Index Entry
+struct PathHashIndexEntry {
+  uint64 pathHash<bgcolor = COLOR_HASH>;
+  uint32 entryOffset<bgcolor = COLOR_HEADER>;
+};
+
+// Full Directory Index (V10+)
+struct FullDirectoryIndex {
+  uint32 directoryCount<bgcolor = COLOR_HEADER>;
+  if (directoryCount > 0) {
+    DirectoryEntry directories[directoryCount]<bgcolor = COLOR_ENTRY>;
+  }
+};
+
+// Directory Entry
+struct DirectoryEntry {
+  // Read directory name
+  local int64 stringPos = FTell();
+  local int32 dirNameLength = ReadInt();
+  FSkip(4); // Go back to read the full string
+
+  if (dirNameLength < 0) {
+    // UTF-16 string
+    int32 dirNameLengthUtf16<bgcolor = COLOR_STRING>;
+    wchar_t directoryName[-dirNameLengthUtf16]<bgcolor = COLOR_STRING>;
+  } else {
+    // ASCII string
+    int32 dirNameLengthAscii<bgcolor = COLOR_STRING>;
+    char directoryName[dirNameLengthAscii]<bgcolor = COLOR_STRING>;
+  }
+
+  uint32 fileCount<bgcolor = COLOR_HEADER>;
+  if (fileCount > 0) {
+    FileEntry files[fileCount]<bgcolor = COLOR_ENTRY>;
+  }
+};
+
+// File Entry
+struct FileEntry {
+  // Read file name
+  local int64 stringPos = FTell();
+  local int32 fileNameLength = ReadInt();
+  FSkip(4); // Go back to read the full string
+
+  if (fileNameLength < 0) {
+    // UTF-16 string
+    int32 fileNameLengthUtf16<bgcolor = COLOR_STRING>;
+    wchar_t fileName[-fileNameLengthUtf16]<bgcolor = COLOR_STRING>;
+  } else {
+    // ASCII string
+    int32 fileNameLengthAscii<bgcolor = COLOR_STRING>;
+    char fileName[fileNameLengthAscii]<bgcolor = COLOR_STRING>;
+  }
+
+  uint32 entryOffset<bgcolor = COLOR_HEADER>;
+};
+
+// Start parsing the file
+PAK pak;

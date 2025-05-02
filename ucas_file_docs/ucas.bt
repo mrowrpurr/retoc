@@ -1,0 +1,52 @@
+//------------------------------------------------
+//--- 010 Editor v12.0 Binary Template
+//
+//      File: ucas.bt
+//   Authors: Cline
+//   Version: 1.0
+//   Purpose: Parse Unreal Engine UCAS (Unreal Content Archive Storage) files
+//  Category: Game
+// File Mask: *.ucas
+//  ID Bytes:
+//   History:
+//   1.0 - Initial release
+//------------------------------------------------
+
+// Note: This template is designed to be used in conjunction with a UTOC file
+// since UCAS files don't have a header or metadata of their own.
+// All metadata, including offsets, lengths, and compression information,
+// is stored in the corresponding UTOC file.
+
+// Define colors for different block types
+#define COLOR_BLOCK 0xC8FFFF // Light cyan
+
+// Define a data block structure
+typedef struct {
+  // The size of each block can vary depending on compression
+  // This is a placeholder since we don't know the actual size without UTOC data
+  ubyte data[FileSize()];
+} DataBlock<bgcolor = COLOR_BLOCK>;
+
+// Main structure for the UCAS file
+struct UcasFile {
+  // UCAS files consist of a series of data blocks
+  // Without UTOC metadata, we can only show the raw data
+  DataBlock rawData;
+};
+
+// Parse the file
+UcasFile ucasFile;
+
+// Display information about the file
+Printf("UCAS File Information:\n");
+Printf("---------------------\n");
+Printf("File Size: %d bytes\n", FileSize());
+Printf("\n");
+Printf(
+    "Note: UCAS files don't contain metadata. To properly parse this file,\n");
+Printf("you need the corresponding UTOC file which contains the metadata\n");
+Printf("including offsets, lengths, and compression information.\n");
+Printf("\n");
+Printf("UCAS files consist of a series of data blocks that store the actual\n");
+Printf(
+    "content of game assets. Each block may be compressed and/or encrypted.\n");
