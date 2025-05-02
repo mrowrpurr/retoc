@@ -1,4 +1,5 @@
 #include "ucas_reader.h"
+#include "compression.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -158,27 +159,13 @@ std::vector<uint8_t> UcasReader::ReadChunk(const FIoOffsetAndLength& offsetLengt
 std::vector<uint8_t> UcasReader::DecompressData(const std::vector<uint8_t>& compressedData, 
                                               const std::string& compressionMethod,
                                               uint32_t uncompressedSize) {
-    // For now, we'll just implement a simple pass-through for uncompressed data
-    // In a real implementation, you would need to handle different compression methods
-    
-    if (compressionMethod == "None" || compressionMethod.empty()) {
-        // No compression, return the data as is
-        return compressedData;
-    } else if (compressionMethod == "Zlib") {
-        // TODO: Implement Zlib decompression
-        std::cerr << "Zlib decompression not implemented yet" << std::endl;
-    } else if (compressionMethod == "Gzip") {
-        // TODO: Implement Gzip decompression
-        std::cerr << "Gzip decompression not implemented yet" << std::endl;
-    } else if (compressionMethod == "Oodle") {
-        // TODO: Implement Oodle decompression
-        std::cerr << "Oodle decompression not implemented yet" << std::endl;
-    } else {
-        std::cerr << "Unknown compression method: " << compressionMethod << std::endl;
+    // Use our compression utilities to decompress the data
+    try {
+        return utoc::DecompressData(compressedData, compressionMethod, uncompressedSize);
+    } catch (const CompressionError& e) {
+        // Convert CompressionError to runtime_error to maintain backward compatibility
+        throw std::runtime_error(std::string("Decompression error: ") + e.what());
     }
-    
-    // For now, just return an empty vector for unsupported compression methods
-    return std::vector<uint8_t>(uncompressedSize);
 }
 
 } // namespace utoc

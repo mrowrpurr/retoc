@@ -1,2 +1,13 @@
-/target
-/out
+.xmake
+build
+compile_commands
+
+__pycache__
+*.py[cod]
+
+.xmake
+build
+compile_commands
+
+target
+output

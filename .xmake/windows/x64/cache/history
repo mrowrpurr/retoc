@@ -1,9 +1,0 @@
-{
-    cmdlines = {
-        "xmake build",
-        "xmake run",
-        "xmake run",
-        "xmake build",
-        "xmake run"
-    }
-}
