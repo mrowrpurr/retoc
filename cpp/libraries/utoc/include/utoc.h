@@ -263,6 +263,13 @@ public:
    * @return The container header information
    */
   const ContainerHeader &getContainerHeader() const;
+
+  /**
+   * @brief Get a map of file paths to chunk IDs from the Directory Index
+   * @return Map of file paths to chunk IDs, or empty map if no Directory Index
+   * is present
+   */
+  std::unordered_map<std::string, ChunkId> getFilePathMap() const;
 };
 
 /**

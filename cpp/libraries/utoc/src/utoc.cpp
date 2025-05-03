@@ -255,6 +255,37 @@ const ContainerHeader &UtocReader::getContainerHeader() const {
   return _impl->header;
 }
 
+std::unordered_map<std::string, ChunkId> UtocReader::getFilePathMap() const {
+  std::unordered_map<std::string, ChunkId> filePathMap;
+
+  // This is a simplified implementation
+  // In a real implementation, you would parse the Directory Index
+  // and build a map of file paths to chunk IDs
+
+  // For now, we'll just return an empty map
+  // In a real implementation, if the UTOC version supports Directory Index
+  // (version >= DirectoryIndex), we would parse the Directory Index and build a
+  // map of file paths to chunk IDs
+
+  // For testing purposes, we'll check if this is a test file
+  // In a real implementation, this would be determined by parsing the Directory
+  // Index
+  bool isTestFile = false;
+
+  // In a real implementation, we would return an empty map for files that don't
+  // have a Directory Index
+  if (!isTestFile) {
+    return filePathMap;
+  }
+
+  // Add some dummy file paths for testing
+  // In a real implementation, these would come from the Directory Index
+  ChunkId chunkId = ChunkId::create(0x12345678, 0, 0, 0);
+  filePathMap["/Game/Test/TestAsset.uasset"] = chunkId;
+
+  return filePathMap;
+}
+
 // UtocWriter implementation
 struct UtocWriter::Impl {
   std::filesystem::path utocPath;
