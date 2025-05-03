@@ -1,566 +1,792 @@
 # C++ Port Strategy for retoc and repak
 
-This document outlines a strategy for porting the Ruby libraries retoc and repak to C++ static libraries. The goal is to create three separate C++ static libraries (`pak`, `utoc`, and `ucas`) along with a general-purpose utility CLI (`pak_utoc_ucas.exe`) for working with these file formats.
+## Introduction
 
-## Table of Contents
+This document outlines a strategy for porting the Ruby-based retoc and repak libraries to C++. The goal is to create three separate static libraries (`pak`, `utoc`, and `ucas`) along with a general-purpose utility CLI (`pak_utoc_ucas.exe`) that provides functionality for working with Unreal Engine's .pak, .utoc, and .ucas file formats.
 
-1. [Overview](#overview)
-2. [Library Architecture](#library-architecture)
-3. [Dependencies](#dependencies)
-4. [PAK Library](#pak-library)
-5. [UTOC Library](#utoc-library)
-6. [UCAS Library](#ucas-library)
-7. [General Purpose Utility](#general-purpose-utility)
-8. [Implementation Strategy](#implementation-strategy)
-9. [Testing Strategy](#testing-strategy)
-10. [Conclusion](#conclusion)
+## Current Implementation Status and Issues
 
-## Overview
+The current C++ implementation has several limitations that need to be addressed:
 
-The current Ruby implementations (retoc and repak) provide functionality for working with Unreal Engine's file formats:
-- **repak**: Handles .pak files (Legacy assets)
-- **retoc**: Handles .utoc/.ucas files (IoStore containers) and provides conversion between Legacy and Zen assets
+1. **Incomplete File Format Parsing**: The current implementations of the libraries are mostly stubs/placeholders that don't properly parse the actual binary formats of .pak, .utoc, and .ucas files. This results in:
+   - The binary not being able to read real .utoc files successfully
+   - The .pak command crashing when trying to run with --help
+   - Limited functionality for real-world use cases
 
-The C++ port will reorganize this functionality into three static libraries:
-- **pak**: For working with .pak files
-- **utoc**: For working with .utoc files
-- **ucas**: For working with .ucas files
+2. **Missing Binary Format Implementation**: While the header files define comprehensive interfaces, the actual implementation of the binary format parsing and manipulation is incomplete. The libraries need to be updated to properly handle:
+   - Reading and parsing the binary layouts according to the documentation
+   - Proper error handling for malformed or corrupted files
+   - Support for all versions of the file formats
 
-Additionally, a general-purpose utility CLI (`pak_utoc_ucas.exe`) will provide a unified interface for working with all three file formats.
+3. **Stub Implementations**: Many methods return empty vectors or default values instead of actually processing the files. These need to be replaced with proper implementations that:
+   - Read and parse the actual file formats
+   - Handle compression and encryption correctly
+   - Properly extract and manipulate the file contents
 
-## Library Architecture
+## Overall Architecture
 
-After analyzing the dependencies and relationships between the file formats, I recommend the following architecture:
+The proposed architecture consists of:
+
+1. **Three Static Libraries:**
+   - `pak`: For working with .pak files
+   - `utoc`: For working with .utoc files
+   - `ucas`: For working with .ucas files
+
+2. **Existing Library:**
+   - `oodle_loader`: For Oodle compression support (already implemented)
+
+3. **General Purpose Utility:**
+   - `pak_utoc_ucas.exe`: A CLI tool that leverages the static libraries to provide comprehensive functionality for working with all three file formats
+
+### Library Interdependencies
+
+After analyzing the file formats and their relationships, here's the proposed dependency structure:
 
 ```
-+-------------------+      +-------------------+      +-------------------+
-|                   |      |                   |      |                   |
-|  pak (static lib) |      | utoc (static lib) |<---->| ucas (static lib) |
-|                   |      |                   |      |                   |
-+-------------------+      +-------------------+      +-------------------+
-          ^                        ^                          ^
-          |                        |                          |
-          |                        |                          |
-          v                        v                          v
-+---------------------------------------------------------------+
-|                                                               |
-|                pak_utoc_ucas.exe (CLI utility)                |
-|                                                               |
-+---------------------------------------------------------------+
+                  +----------------+
+                  | pak_utoc_ucas  |
+                  | (executable)   |
+                  +----------------+
+                          |
+                          v
++----------------+  +----------------+  +----------------+
+|      pak       |  |      utoc      |  |      ucas      |
+| (static lib)   |  | (static lib)   |  | (static lib)   |
++----------------+  +----------------+  +----------------+
+                          |                     ^
+                          v                     |
+                  +----------------+            |
+                  |  oodle_loader  |------------+
+                  | (static lib)   |
+                  +----------------+
 ```
 
-### Separation vs. Integration
+- `pak` can be independent of the other libraries
+- `utoc` depends on `oodle_loader` for compression support
+- `ucas` depends on `oodle_loader` for compression support
+- `pak_utoc_ucas` depends on all three libraries
 
-Based on the analysis of the file formats and their relationships:
+This structure avoids circular dependencies while allowing each library to focus on its specific file format.
 
-- **pak** can be completely separate from utoc/ucas, as it uses a different file format and doesn't directly interact with .utoc/.ucas files.
-- **utoc** and **ucas** are tightly coupled, as .utoc files contain metadata for .ucas files. However, they can still be separated into distinct libraries with well-defined interfaces between them.
+## Common Dependencies and Utilities
 
-This architecture allows for:
-1. Independent development and testing of each library
-2. Flexibility in using only the libraries needed for specific tasks
-3. Clear separation of concerns between different file formats
-4. Easier maintenance and updates for each file format
+All libraries will share some common dependencies and utilities:
 
-## Dependencies
+1. **Standard Library Dependencies:**
+   - `<vector>`, `<string>`, `<unordered_map>`, `<memory>`, etc.
 
-### Common Dependencies
+2. **File I/O:**
+   - `<fstream>` for file operations
+   - Custom memory-mapped file implementation for efficient reading
 
-These dependencies are required by all three libraries:
+3. **Compression Libraries:**
+   - Zlib
+   - Zstd
+   - LZ4
+   - Oodle (via `oodle_loader`)
 
-1. **Compression Libraries**:
-   - **zlib**: For Zlib/Gzip compression
-   - **zstd**: For Zstandard compression
-   - **lz4**: For LZ4 compression
-   - **Oodle** (optional): For Oodle compression (requires licensing from Epic Games/RAD Game Tools)
+4. **Cryptography:**
+   - OpenSSL or Botan for AES encryption/decryption
 
-2. **Cryptography**:
-   - **OpenSSL** or equivalent: For AES-256 encryption/decryption
-   - **SHA-1/SHA-256**: For hash verification
-
-3. **Utility Libraries**:
-   - **fmt** or **std::format** (C++20): For string formatting
-   - **std::filesystem** (C++17) or **boost::filesystem**: For file system operations
-
-### Library-Specific Dependencies
-
-#### pak Library
-- **FNV-64 Hash**: For path hashing in .pak files
-- **CityHash64**: For package ID generation
-
-#### utoc Library
-- **BLAKE3**: For chunk hashing in newer versions
-- **Perfect Hash**: For efficient chunk lookup
-
-#### ucas Library
-- No additional specific dependencies beyond the common ones
+5. **Common Utilities:**
+   - Logging system
+   - Error handling
+   - Memory management utilities
+   - Endianness conversion
 
 ## PAK Library
 
-### Core Functionality
+### Overview
 
-The `pak` library should provide the following functionality:
-
-1. **Reading Operations**:
-   - Parse .pak file headers and footers
-   - Read file entries and indices
-   - Extract files from .pak archives
-   - Support for all major .pak file versions (V2-V11)
-   - Handle encrypted indices and data
-
-2. **Writing Operations**:
-   - Create new .pak files
-   - Add files to existing .pak files
-   - Support various compression methods
-   - Generate proper indices and metadata
-
-### Key Components
-
-```cpp
-// Key classes for the pak library
-class PakReader {
-public:
-    PakReader(const std::string& path, const std::optional<AesKey>& key = std::nullopt);
-    
-    // File operations
-    bool fileExists(const std::string& path) const;
-    std::vector<std::string> getFileList() const;
-    std::vector<uint8_t> extractFile(const std::string& path);
-    
-    // Metadata operations
-    uint32_t getVersion() const;
-    bool isEncrypted() const;
-    std::string getMountPoint() const;
-    
-    // Advanced operations
-    void extractAllFiles(const std::string& outputDir);
-    std::vector<FileEntry> getEntries() const;
-};
-
-class PakWriter {
-public:
-    PakWriter(const std::string& path, uint32_t version, const std::string& mountPoint);
-    
-    // File operations
-    void addFile(const std::string& path, const std::vector<uint8_t>& data, 
-                CompressionMethod compression = CompressionMethod::Zlib);
-    void addFileFromDisk(const std::string& sourcePath, const std::string& destPath,
-                        CompressionMethod compression = CompressionMethod::Zlib);
-    
-    // Finalization
-    void finalize();
-};
-
-// Supporting structures
-struct PakEntry {
-    std::string path;
-    uint64_t offset;
-    uint64_t compressedSize;
-    uint64_t uncompressedSize;
-    uint32_t compressionMethod;
-    std::array<uint8_t, 20> hash;
-    std::vector<CompressionBlock> blocks;
-    uint8_t flags;
-    uint32_t compressionBlockSize;
-};
-
-enum class CompressionMethod {
-    None,
-    Zlib,
-    Gzip,
-    Zstd,
-    LZ4,
-    Oodle
-};
-```
+The `pak` library will provide functionality for reading, writing, and manipulating .pak files. It will support all major .pak file versions from UE4.0 to UE5.3+.
 
 ### Dependencies
 
-The `pak` library requires:
-- All common dependencies
-- FNV-64 hash implementation for path hashing
-- Support for various .pak file versions
+- **Standard Library:** `<vector>`, `<string>`, `<unordered_map>`, `<memory>`, etc.
+- **File I/O:** `<fstream>`, memory-mapped file implementation
+- **Compression:** Zlib, Zstd, LZ4, Oodle (via `oodle_loader`)
+- **Cryptography:** OpenSSL or Botan for AES encryption/decryption
+- **Hashing:** FNV-64 implementation for path hashing
+
+### Key Classes and Functions
+
+#### PakFile Class
+
+```cpp
+namespace Pak {
+
+class PakFile {
+    // Private members
+    std::string _filePath;
+    PakHeader _header;
+    PakIndex _index;
+    PakFooter _footer;
+    std::vector<PakEntry> _entries;
+    
+public:
+    // Constructors
+    PakFile();
+    explicit PakFile(const std::string& filePath);
+    
+    // Open/close operations
+    bool open(const std::string& filePath);
+    void close();
+    
+    // Information retrieval
+    PakInfo getInfo() const;
+    std::vector<std::string> listFiles() const;
+    bool hasFile(const std::string& path) const;
+    
+    // File operations
+    std::vector<uint8_t> extractFile(const std::string& path);
+    bool extractFile(const std::string& path, const std::string& outputPath);
+    bool extractAllFiles(const std::string& outputDir);
+    
+    // Creation operations
+    bool create(const std::string& filePath, const std::string& mountPoint);
+    bool addFile(const std::string& path, const std::vector<uint8_t>& data, CompressionMethod method = CompressionMethod::None);
+    bool addFile(const std::string& path, const std::string& inputPath, CompressionMethod method = CompressionMethod::None);
+    bool save();
+    
+    // Encryption operations
+    bool setEncryptionKey(const std::string& key);
+    bool isEncrypted() const;
+};
+
+} // namespace Pak
+```
+
+#### PakEntry Class
+
+```cpp
+namespace Pak {
+
+class PakEntry {
+    // Private members
+    std::string _path;
+    uint64_t _offset;
+    uint64_t _compressedSize;
+    uint64_t _uncompressedSize;
+    CompressionMethod _compressionMethod;
+    std::vector<uint8_t> _hash;
+    bool _encrypted;
+    std::vector<PakBlock> _blocks;
+    
+public:
+    // Constructors
+    PakEntry();
+    PakEntry(const std::string& path, uint64_t offset, uint64_t compressedSize, uint64_t uncompressedSize);
+    
+    // Getters
+    const std::string& getPath() const;
+    uint64_t getOffset() const;
+    uint64_t getCompressedSize() const;
+    uint64_t getUncompressedSize() const;
+    CompressionMethod getCompressionMethod() const;
+    const std::vector<uint8_t>& getHash() const;
+    bool isEncrypted() const;
+    const std::vector<PakBlock>& getBlocks() const;
+    
+    // Setters
+    void setPath(const std::string& path);
+    void setOffset(uint64_t offset);
+    void setCompressedSize(uint64_t size);
+    void setUncompressedSize(uint64_t size);
+    void setCompressionMethod(CompressionMethod method);
+    void setHash(const std::vector<uint8_t>& hash);
+    void setEncrypted(bool encrypted);
+    void addBlock(const PakBlock& block);
+};
+
+} // namespace Pak
+```
+
+#### Utility Functions
+
+```cpp
+namespace Pak {
+
+// Path hashing
+uint64_t fnv64Hash(const std::string& path, uint64_t seed);
+
+// Compression
+std::vector<uint8_t> compressData(const std::vector<uint8_t>& data, CompressionMethod method);
+std::vector<uint8_t> decompressData(const std::vector<uint8_t>& data, CompressionMethod method, size_t uncompressedSize);
+
+// Encryption
+std::vector<uint8_t> encryptData(const std::vector<uint8_t>& data, const std::vector<uint8_t>& key);
+std::vector<uint8_t> decryptData(const std::vector<uint8_t>& data, const std::vector<uint8_t>& key);
+
+// Version detection
+PakVersion detectVersion(const PakFooter& footer);
+
+} // namespace Pak
+```
 
 ## UTOC Library
 
-### Core Functionality
+### Overview
 
-The `utoc` library should provide the following functionality:
-
-1. **Reading Operations**:
-   - Parse .utoc file headers
-   - Read chunk IDs, offsets, and lengths
-   - Read compression blocks and methods
-   - Read directory index
-   - Support for all major .utoc file versions
-
-2. **Writing Operations**:
-   - Create new .utoc files
-   - Add chunks to .utoc files
-   - Generate proper directory indices
-   - Support various compression methods
-
-3. **Utility Operations**:
-   - Extract manifest from .utoc files
-   - Show container information
-   - List files in the directory index
-
-### Key Components
-
-```cpp
-// Key classes for the utoc library
-class UtocReader {
-public:
-    UtocReader(const std::string& path, const std::optional<AesKey>& key = std::nullopt);
-    
-    // Chunk operations
-    bool hasChunk(const ChunkId& chunkId) const;
-    ChunkInfo getChunkInfo(const ChunkId& chunkId) const;
-    std::vector<ChunkId> getAllChunks() const;
-    
-    // Directory operations
-    std::vector<std::string> getFileList() const;
-    std::optional<ChunkId> getChunkIdForPath(const std::string& path) const;
-    
-    // Metadata operations
-    EIoStoreTocVersion getVersion() const;
-    bool isEncrypted() const;
-    std::string getMountPoint() const;
-    
-    // Container header operations
-    std::optional<ContainerHeader> getContainerHeader() const;
-};
-
-class UtocWriter {
-public:
-    UtocWriter(const std::string& path, EIoStoreTocVersion version, 
-              const std::string& mountPoint);
-    
-    // Chunk operations
-    void addChunk(const ChunkId& chunkId, const ChunkInfo& chunkInfo);
-    void addChunkWithPath(const ChunkId& chunkId, const std::string& path, 
-                         const ChunkInfo& chunkInfo);
-    
-    // Directory operations
-    void addDirectoryEntry(const std::string& path);
-    
-    // Container header operations
-    void setContainerHeader(const ContainerHeader& header);
-    
-    // Finalization
-    void finalize();
-};
-
-// Supporting structures
-struct ChunkId {
-    uint64_t id;
-    uint16_t index;
-    uint8_t type;
-    uint8_t flags;
-    
-    static ChunkId create(uint64_t id, uint16_t index, EIoChunkType type);
-};
-
-struct ChunkInfo {
-    uint64_t offset;
-    uint64_t size;
-    CompressionMethod compressionMethod;
-    std::vector<CompressionBlock> blocks;
-    bool encrypted;
-};
-
-enum class EIoStoreTocVersion {
-    Invalid,
-    Initial,
-    DirectoryIndex,
-    PartitionSize,
-    PerfectHash,
-    PerfectHashWithOverflow,
-    OnDemandMetaData,
-    RemovedOnDemandMetaData,
-    ReplaceIoChunkHashWithIoHash
-};
-```
+The `utoc` library will provide functionality for reading, writing, and manipulating .utoc files. It will support all major .utoc file versions from UE4.26 to UE5.5+.
 
 ### Dependencies
 
-The `utoc` library requires:
-- All common dependencies
-- BLAKE3 for chunk hashing
-- Perfect hash implementation for chunk lookup
-- Interface with the `ucas` library for reading/writing chunk data
+- **Standard Library:** `<vector>`, `<string>`, `<unordered_map>`, `<memory>`, etc.
+- **File I/O:** `<fstream>`, memory-mapped file implementation
+- **Compression:** Zlib, Zstd, LZ4, Oodle (via `oodle_loader`)
+- **Cryptography:** OpenSSL or Botan for AES encryption/decryption
+- **Hashing:** SHA-1 or SHA-256 for chunk hashing
+
+### Key Classes and Functions
+
+#### UtocFile Class
+
+```cpp
+namespace Utoc {
+
+class UtocFile {
+    // Private members
+    std::string _filePath;
+    UtocHeader _header;
+    std::vector<ChunkId> _chunkIds;
+    std::vector<OffsetAndLength> _offsetsAndLengths;
+    std::vector<CompressionBlock> _compressionBlocks;
+    std::vector<std::string> _compressionMethods;
+    DirectoryIndex _directoryIndex;
+    std::vector<ChunkMetadata> _chunkMetadata;
+    
+public:
+    // Constructors
+    UtocFile();
+    explicit UtocFile(const std::string& filePath);
+    
+    // Open/close operations
+    bool open(const std::string& filePath);
+    void close();
+    
+    // Information retrieval
+    UtocInfo getInfo() const;
+    std::vector<std::string> listFiles() const;
+    bool hasFile(const std::string& path) const;
+    
+    // Chunk operations
+    ChunkId getChunkId(const std::string& path) const;
+    OffsetAndLength getOffsetAndLength(const ChunkId& chunkId) const;
+    CompressionBlock getCompressionBlock(uint32_t blockIndex) const;
+    
+    // Directory operations
+    const DirectoryIndex& getDirectoryIndex() const;
+    
+    // Creation operations
+    bool create(const std::string& filePath, UtocVersion version = UtocVersion::Latest);
+    bool addChunk(const ChunkId& chunkId, const OffsetAndLength& offsetAndLength, const ChunkMetadata& metadata);
+    bool addFile(const std::string& path, const ChunkId& chunkId);
+    bool save();
+    
+    // Encryption operations
+    bool setEncryptionKey(const std::string& key);
+    bool isEncrypted() const;
+};
+
+} // namespace Utoc
+```
+
+#### ChunkId Class
+
+```cpp
+namespace Utoc {
+
+class ChunkId {
+    // Private members
+    uint64_t _id;
+    uint16_t _index;
+    uint8_t _type;
+    uint8_t _flags;
+    
+public:
+    // Constructors
+    ChunkId();
+    ChunkId(uint64_t id, uint16_t index, ChunkType type);
+    
+    // Getters
+    uint64_t getId() const;
+    uint16_t getIndex() const;
+    ChunkType getType() const;
+    bool isNew() const;
+    bool hasVersion() const;
+    
+    // Setters
+    void setId(uint64_t id);
+    void setIndex(uint16_t index);
+    void setType(ChunkType type);
+    void setNew(bool isNew);
+    void setHasVersion(bool hasVersion);
+    
+    // Conversion
+    uint8_t* toBytes(uint8_t* buffer) const;
+    static ChunkId fromBytes(const uint8_t* buffer);
+};
+
+} // namespace Utoc
+```
+
+#### DirectoryIndex Class
+
+```cpp
+namespace Utoc {
+
+class DirectoryIndex {
+    // Private members
+    std::string _mountPoint;
+    std::vector<DirectoryEntry> _directories;
+    std::vector<FileEntry> _files;
+    std::vector<std::string> _stringTable;
+    
+public:
+    // Constructors
+    DirectoryIndex();
+    
+    // Getters
+    const std::string& getMountPoint() const;
+    const std::vector<DirectoryEntry>& getDirectories() const;
+    const std::vector<FileEntry>& getFiles() const;
+    const std::vector<std::string>& getStringTable() const;
+    
+    // Operations
+    void addDirectory(const DirectoryEntry& directory);
+    void addFile(const FileEntry& file);
+    void addString(const std::string& str);
+    
+    // Lookup
+    ChunkId findChunkId(const std::string& path) const;
+    std::vector<std::string> listFiles() const;
+};
+
+} // namespace Utoc
+```
+
+#### Utility Functions
+
+```cpp
+namespace Utoc {
+
+// Chunk ID operations
+ChunkId createChunkId(uint64_t packageId, uint16_t chunkIndex, ChunkType type);
+bool isValidChunkId(const ChunkId& chunkId);
+
+// Perfect hash operations
+uint32_t computePerfectHash(const ChunkId& chunkId, const std::vector<uint32_t>& seeds);
+std::vector<uint32_t> generatePerfectHashSeeds(const std::vector<ChunkId>& chunkIds);
+
+// Compression
+std::vector<uint8_t> compressData(const std::vector<uint8_t>& data, CompressionMethod method);
+std::vector<uint8_t> decompressData(const std::vector<uint8_t>& data, CompressionMethod method, size_t uncompressedSize);
+
+// Encryption
+std::vector<uint8_t> encryptData(const std::vector<uint8_t>& data, const std::vector<uint8_t>& key);
+std::vector<uint8_t> decryptData(const std::vector<uint8_t>& data, const std::vector<uint8_t>& key);
+
+// Version detection
+UtocVersion detectVersion(const UtocHeader& header);
+
+} // namespace Utoc
+```
 
 ## UCAS Library
 
-### Core Functionality
+### Overview
 
-The `ucas` library should provide the following functionality:
-
-1. **Reading Operations**:
-   - Read chunk data from .ucas files
-   - Handle compressed and encrypted data
-   - Support for partitioned .ucas files
-
-2. **Writing Operations**:
-   - Write chunk data to .ucas files
-   - Support various compression methods
-   - Generate proper partitioning if needed
-
-### Key Components
-
-```cpp
-// Key classes for the ucas library
-class UcasReader {
-public:
-    UcasReader(const std::string& path, uint64_t partitionSize = 0, 
-              uint32_t partitionCount = 0);
-    
-    // Chunk operations
-    std::vector<uint8_t> readChunk(uint64_t offset, uint64_t size, 
-                                 const std::vector<CompressionBlock>& blocks,
-                                 const std::optional<AesKey>& key = std::nullopt);
-    
-    // Partition operations
-    int32_t getPartitionIndex(uint64_t offset) const;
-};
-
-class UcasWriter {
-public:
-    UcasWriter(const std::string& path, uint64_t partitionSize = 0);
-    
-    // Chunk operations
-    ChunkInfo writeChunk(const std::vector<uint8_t>& data, 
-                       CompressionMethod compressionMethod = CompressionMethod::Zlib,
-                       uint32_t compressionBlockSize = 0x10000,
-                       const std::optional<AesKey>& key = std::nullopt);
-    
-    // Finalization
-    void finalize();
-    
-    // Partition information
-    uint32_t getPartitionCount() const;
-};
-
-// Supporting structures
-struct CompressionBlock {
-    uint64_t offset;
-    uint32_t compressedSize;
-    uint32_t uncompressedSize;
-    uint8_t compressionMethodIndex;
-};
-```
+The `ucas` library will provide functionality for reading, writing, and manipulating .ucas files. It will work in conjunction with the `utoc` library to provide a complete solution for working with IoStore containers.
 
 ### Dependencies
 
-The `ucas` library requires:
-- All common dependencies
-- Interface with the `utoc` library for metadata
+- **Standard Library:** `<vector>`, `<string>`, `<unordered_map>`, `<memory>`, etc.
+- **File I/O:** `<fstream>`, memory-mapped file implementation
+- **Compression:** Zlib, Zstd, LZ4, Oodle (via `oodle_loader`)
+- **Cryptography:** OpenSSL or Botan for AES encryption/decryption
 
-## General Purpose Utility
+### Key Classes and Functions
 
-The `pak_utoc_ucas.exe` CLI utility should provide a unified interface for working with all three file formats.
+#### UcasFile Class
 
-### Core Functionality
+```cpp
+namespace Ucas {
 
-1. **PAK Operations**:
-   - List files in .pak archives
-   - Extract files from .pak archives
-   - Create new .pak archives
-   - Add files to existing .pak archives
+class UcasFile {
+    // Private members
+    std::string _filePath;
+    std::vector<std::string> _partitionPaths;
+    std::vector<std::fstream> _partitionStreams;
+    uint64_t _partitionSize;
+    
+public:
+    // Constructors
+    UcasFile();
+    explicit UcasFile(const std::string& filePath);
+    
+    // Open/close operations
+    bool open(const std::string& filePath);
+    void close();
+    
+    // Partition operations
+    bool openPartition(uint32_t partitionIndex);
+    void closePartition(uint32_t partitionIndex);
+    uint32_t getPartitionCount() const;
+    uint64_t getPartitionSize() const;
+    
+    // Data operations
+    std::vector<uint8_t> readData(uint64_t offset, uint64_t size, uint32_t partitionIndex = 0);
+    bool writeData(uint64_t offset, const std::vector<uint8_t>& data, uint32_t partitionIndex = 0);
+    
+    // Creation operations
+    bool create(const std::string& filePath, uint64_t partitionSize = 0);
+    bool createPartition(uint32_t partitionIndex);
+    bool save();
+};
 
-2. **UTOC/UCAS Operations**:
-   - List files in .utoc files
-   - Extract chunks from .utoc/.ucas files
-   - Create new .utoc/.ucas files
-   - Add chunks to existing .utoc/.ucas files
-
-3. **Conversion Operations**:
-   - Convert between Legacy and Zen assets
-   - Handle shader libraries during conversion
-
-### Command-Line Interface
-
-```
-Usage: pak_utoc_ucas [OPTIONS] <COMMAND>
-
-Commands:
-  pak:
-    info       Print .pak info
-    list       List files in .pak
-    extract    Extract files from .pak
-    create     Create new .pak
-    add        Add files to existing .pak
-
-  utoc:
-    info       Print .utoc info
-    list       List files in .utoc
-    extract    Extract chunks from .utoc
-    create     Create new .utoc
-    add        Add chunks to existing .utoc
-
-  convert:
-    to-legacy  Convert Zen assets to Legacy assets
-    to-zen     Convert Legacy assets to Zen assets
-
-Options:
-  -a, --aes-key <KEY>  AES key for encrypted files
-  -v, --verbose        Enable verbose output
-  -h, --help           Print help
-  --version            Print version
+} // namespace Ucas
 ```
 
-## Implementation Strategy
+#### DataBlock Class
 
-### Phase 1: Core Library Structure
+```cpp
+namespace Ucas {
 
-1. **Set up project structure**:
-   - Create the three static library projects
-   - Set up build system (xmake)
-   - Define common interfaces and data structures
+class DataBlock {
+    // Private members
+    uint64_t _offset;
+    uint64_t _compressedSize;
+    uint64_t _uncompressedSize;
+    CompressionMethod _compressionMethod;
+    bool _encrypted;
+    
+public:
+    // Constructors
+    DataBlock();
+    DataBlock(uint64_t offset, uint64_t compressedSize, uint64_t uncompressedSize, CompressionMethod method = CompressionMethod::None);
+    
+    // Getters
+    uint64_t getOffset() const;
+    uint64_t getCompressedSize() const;
+    uint64_t getUncompressedSize() const;
+    CompressionMethod getCompressionMethod() const;
+    bool isEncrypted() const;
+    
+    // Setters
+    void setOffset(uint64_t offset);
+    void setCompressedSize(uint64_t size);
+    void setUncompressedSize(uint64_t size);
+    void setCompressionMethod(CompressionMethod method);
+    void setEncrypted(bool encrypted);
+};
 
-2. **Implement common utilities**:
-   - Compression/decompression functions
-   - Encryption/decryption functions
-   - File I/O utilities
-   - Logging and error handling
+} // namespace Ucas
+```
 
-### Phase 2: PAK Library Implementation
+#### Utility Functions
 
-1. **Implement PAK reading**:
-   - Parse .pak file headers and footers
-   - Read file entries and indices
-   - Extract files from .pak archives
+```cpp
+namespace Ucas {
 
-2. **Implement PAK writing**:
-   - Create new .pak files
-   - Add files to .pak files
-   - Generate proper indices and metadata
+// Partition operations
+uint32_t calculatePartitionIndex(uint64_t offset, uint64_t partitionSize);
+uint64_t calculatePartitionOffset(uint64_t offset, uint64_t partitionSize);
 
-3. **Test PAK library**:
-   - Unit tests for reading/writing
-   - Integration tests with real .pak files
+// Compression
+std::vector<uint8_t> compressData(const std::vector<uint8_t>& data, CompressionMethod method);
+std::vector<uint8_t> decompressData(const std::vector<uint8_t>& data, CompressionMethod method, size_t uncompressedSize);
 
-### Phase 3: UTOC/UCAS Library Implementation
+// Encryption
+std::vector<uint8_t> encryptData(const std::vector<uint8_t>& data, const std::vector<uint8_t>& key);
+std::vector<uint8_t> decryptData(const std::vector<uint8_t>& data, const std::vector<uint8_t>& key);
 
-1. **Implement UTOC reading**:
-   - Parse .utoc file headers
-   - Read chunk IDs, offsets, and lengths
-   - Read directory index
+// Block alignment
+uint64_t alignToBlockSize(uint64_t offset, uint64_t blockSize);
 
-2. **Implement UCAS reading**:
-   - Read chunk data from .ucas files
-   - Handle compressed and encrypted data
-   - Support for partitioned .ucas files
+} // namespace Ucas
+```
 
-3. **Implement UTOC/UCAS writing**:
-   - Create new .utoc/.ucas files
-   - Add chunks to .utoc/.ucas files
-   - Generate proper directory indices
+## General Purpose Utility (pak_utoc_ucas.exe)
 
-4. **Test UTOC/UCAS libraries**:
-   - Unit tests for reading/writing
-   - Integration tests with real .utoc/.ucas files
+### Overview
 
-### Phase 4: Conversion Implementation
+The `pak_utoc_ucas.exe` utility will provide a command-line interface for working with .pak, .utoc, and .ucas files. It will leverage the functionality provided by the three static libraries to offer a comprehensive solution for Unreal Engine asset manipulation.
 
-1. **Implement Legacy to Zen conversion**:
-   - Parse Legacy assets
-   - Convert to Zen format
-   - Write to .utoc/.ucas files
+### Dependencies
 
-2. **Implement Zen to Legacy conversion**:
-   - Parse Zen assets
-   - Convert to Legacy format
-   - Write to .pak files
+- **All Three Static Libraries:** `pak`, `utoc`, `ucas`
+- **Command-Line Parsing:** CLI11 or similar library
+- **Logging:** spdlog or similar library
+- **Progress Reporting:** Custom implementation or third-party library
 
-3. **Test conversion**:
-   - Unit tests for conversion
-   - Integration tests with real assets
+### Command Structure
 
-### Phase 5: CLI Utility Implementation
+The utility will use a subcommand structure:
 
-1. **Implement command-line interface**:
-   - Parse command-line arguments
-   - Dispatch to appropriate library functions
-   - Handle errors and output
+```
+pak_utoc_ucas [OPTIONS] SUBCOMMAND
 
-2. **Test CLI utility**:
-   - Integration tests for all commands
-   - End-to-end tests for common workflows
+OPTIONS:
+  -h,--help                   Print this help message and exit
+  --version                   Display program version information and exit
+
+SUBCOMMANDS:
+  pak                         PAK file operations
+  utoc                        UTOC file operations
+  ucas                        UCAS file operations
+```
+
+Each subcommand will have its own set of operations:
+
+```
+pak_utoc_ucas pak [OPTIONS] SUBCOMMAND
+
+SUBCOMMANDS:
+  info                        Display information about a PAK file
+  list                        List files in a PAK file
+  extract                     Extract files from a PAK file
+  create                      Create a new PAK file
+  add                         Add files to a PAK file
+```
+
+```
+pak_utoc_ucas utoc [OPTIONS] SUBCOMMAND
+
+SUBCOMMANDS:
+  info                        Display information about a UTOC file
+  list                        List files in a UTOC file
+  extract                     Extract chunks from a UTOC/UCAS file pair
+  create                      Create a new UTOC file
+  add                         Add chunks to a UTOC file
+```
+
+```
+pak_utoc_ucas ucas [OPTIONS] SUBCOMMAND
+
+SUBCOMMANDS:
+  create                      Create a new UCAS file
+  add                         Add data to a UCAS file
+```
+
+### Implementation
+
+The utility will be implemented as a thin wrapper around the static libraries, with each subcommand delegating to the appropriate library functions.
+
+```cpp
+// Main entry point
+int main(int argc, char** argv) {
+    CLI::App app{"Unreal Engine PAK/UTOC/UCAS File Utility"};
+    
+    // Version flag
+    app.set_version_flag("--version", "1.0.0");
+    
+    // PAK subcommand
+    auto* pakCmd = app.add_subcommand("pak", "PAK file operations");
+    setupPakCommands(pakCmd);
+    
+    // UTOC subcommand
+    auto* utocCmd = app.add_subcommand("utoc", "UTOC file operations");
+    setupUtocCommands(utocCmd);
+    
+    // UCAS subcommand
+    auto* ucasCmd = app.add_subcommand("ucas", "UCAS file operations");
+    setupUcasCommands(ucasCmd);
+    
+    // Require a subcommand
+    app.require_subcommand(1);
+    
+    // Parse command line
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError& e) {
+        return app.exit(e);
+    }
+    
+    return 0;
+}
+```
 
 ## Dependencies
 
-### Required Dependencies
+### Required External Libraries
 
-1. **Compression Libraries**:
-   - **zlib**: For Zlib/Gzip compression
-     - License: zlib License
-     - Integration: Can be linked statically or dynamically
-   - **zstd**: For Zstandard compression
-     - License: BSD License
-     - Integration: Can be linked statically or dynamically
-   - **lz4**: For LZ4 compression
-     - License: BSD License
-     - Integration: Can be linked statically or dynamically
+1. **Compression Libraries:**
+   - Zlib: For zlib and gzip compression
+   - Zstd: For Zstandard compression
+   - LZ4: For LZ4 compression
+   - Oodle: Via the existing `oodle_loader` library
 
-2. **Cryptography**:
-   - **OpenSSL** or **Botan**: For AES-256 encryption/decryption
-     - License: OpenSSL License (OpenSSL) or BSD License (Botan)
-     - Integration: Can be linked statically or dynamically
-   - **BLAKE3**: For chunk hashing
-     - License: CC0 or Apache 2.0
-     - Integration: Can be included directly as source
+2. **Cryptography:**
+   - OpenSSL or Botan: For AES encryption/decryption
+   - SHA-1 or SHA-256 hashing
 
-3. **Utility Libraries**:
-   - **fmt**: For string formatting
-     - License: MIT License
-     - Integration: Can be included directly as source or linked statically
-   - **CLI11**: For command-line parsing
-     - License: BSD License
-     - Integration: Header-only library
+3. **Command-Line Parsing:**
+   - CLI11: Modern C++11 command-line parser
+
+4. **Logging:**
+   - spdlog: Fast C++ logging library
 
 ### Optional Dependencies
 
-1. **Oodle Compression**:
-   - License: Proprietary (requires licensing from Epic Games/RAD Game Tools)
-   - Integration: Dynamic loading at runtime (similar to the existing liboodle)
+1. **Memory Mapping:**
+   - Custom implementation or platform-specific APIs
 
-2. **Threading Library**:
-   - **TBB**: For parallel processing
-     - License: Apache 2.0
-     - Integration: Can be linked statically or dynamically
+2. **Progress Reporting:**
+   - Custom implementation or third-party library
 
-## Testing Strategy
+3. **Testing:**
+   - Catch2 or Google Test for unit testing
 
-1. **Unit Tests**:
-   - Test individual components (e.g., compression, encryption, file parsing)
-   - Use a framework like Google Test or Catch2
-   - Aim for high code coverage
+## Implementation Strategy
 
-2. **Integration Tests**:
-   - Test interactions between components
-   - Test with real .pak, .utoc, and .ucas files
-   - Verify compatibility with different versions
+### Phase 1: Core Infrastructure (Completed)
 
-3. **Performance Tests**:
-   - Benchmark reading and writing operations
-   - Compare performance with original Ruby implementations
-   - Identify and optimize bottlenecks
+1. ✅ Set up the project structure with xmake
+2. ✅ Implement common utilities and dependencies
+3. ✅ Create basic class skeletons for all three libraries
+4. ✅ Implement file I/O and memory mapping
 
-4. **Compatibility Tests**:
-   - Test with files from different Unreal Engine versions
+### Phase 2: PAK Library (Needs Completion)
+
+1. **Binary Format Parsing**: Implement proper parsing of the PAK file format according to the binary layout documentation
+   - Parse the footer to determine the version and index location
+   - Read and parse the index according to the version-specific format
+   - Handle different versions of the PAK format (V2-V11)
+   - Implement proper error handling for malformed or corrupted files
+
+2. **Reading Support**:
+   - Implement proper file entry lookup using the index
+   - Add support for reading compressed and encrypted data
+   - Handle different compression methods (Zlib, Gzip, Zstd, LZ4, Oodle)
+   - Implement proper AES decryption for encrypted files
+
+3. **Writing Support**:
+   - Implement proper index creation and writing
+   - Add support for compressing and encrypting data
+   - Handle different compression methods
+   - Implement proper AES encryption for encrypted files
+
+4. **Testing**:
+   - Test with various PAK file versions from different Unreal Engine games
+   - Verify compatibility with the official UnrealPak tool
+   - Test edge cases like large files, many small files, etc.
+
+### Phase 3: UTOC Library (Needs Completion)
+
+1. **Binary Format Parsing**: Implement proper parsing of the UTOC file format according to the binary layout documentation
+   - Parse the header to determine the version and container information
+   - Read and parse the chunk IDs, offsets, and lengths
+   - Handle the perfect hash table for chunk lookup
+   - Parse the compression blocks and methods
+   - Read and parse the directory index
+   - Handle different versions of the UTOC format
+
+2. **Reading Support**:
+   - Implement proper chunk lookup using the perfect hash table
+   - Add support for reading the directory index
+   - Handle different compression methods
+   - Implement proper AES decryption for encrypted files
+
+3. **Writing Support**:
+   - Implement proper header and chunk table creation
+   - Generate perfect hash seeds for chunk lookup
+   - Create and write the directory index
+   - Handle different compression methods
+   - Implement proper AES encryption for encrypted files
+
+4. **Testing**:
+   - Test with various UTOC file versions from different Unreal Engine games
+   - Verify compatibility with the Unreal Engine IoStore system
+   - Test edge cases like large chunks, many small chunks, etc.
+
+### Phase 4: UCAS Library (Needs Completion)
+
+1. **Binary Format Handling**: Implement proper handling of the UCAS file format
+   - Handle reading and writing of data blocks
+   - Support for partitioned UCAS files
+   - Implement proper alignment for encrypted blocks
+
+2. **Reading Support**:
+   - Implement proper chunk data reading based on offsets from UTOC
+   - Add support for decompressing chunk data
+   - Handle different compression methods
+   - Implement proper AES decryption for encrypted chunks
+
+3. **Writing Support**:
+   - Implement proper chunk data writing
+   - Add support for compressing chunk data
+   - Handle different compression methods
+   - Implement proper AES encryption for encrypted chunks
+   - Support for creating partitioned UCAS files
+
+4. **Testing**:
+   - Test with various UCAS file versions from different Unreal Engine games
+   - Verify compatibility with the Unreal Engine IoStore system
+   - Test edge cases like large chunks, many small chunks, etc.
+
+### Phase 5: Command-Line Utility (Needs Improvement)
+
+1. **Robust Command-Line Parsing**:
+   - Fix issues with the current implementation
+   - Ensure proper error handling for invalid arguments
+   - Add comprehensive help messages for all commands
+
+2. **PAK Subcommands**:
+   - Fix the current issues with the PAK subcommands
+   - Implement proper error handling
+   - Add support for all PAK operations (info, list, extract, create, add)
+
+3. **UTOC Subcommands**:
+   - Improve the current implementation of UTOC subcommands
+   - Implement proper error handling
+   - Add support for all UTOC operations (info, list, extract, create, add)
+
+4. **UCAS Subcommands**:
+   - Improve the current implementation of UCAS subcommands
+   - Implement proper error handling
+   - Add support for all UCAS operations (create, add)
+
+5. **Progress Reporting and Logging**:
+   - Implement proper progress reporting for long-running operations
+   - Add comprehensive logging for debugging and information
+   - Handle errors gracefully with informative error messages
+
+6. **Testing**:
+   - Test all commands with various file formats and versions
+   - Verify compatibility with real-world game files
+   - Test edge cases and error conditions
+
+### Phase 6: Integration and Testing (Final Phase)
+
+1. **Integration**:
+   - Ensure all libraries work together correctly
+   - Verify that the command-line utility properly uses the libraries
+   - Check for any circular dependencies or integration issues
+
+2. **Real-World Testing**:
+   - Test with real-world game files from various Unreal Engine versions
    - Verify compatibility with the original Ruby implementations
-   - Test on different platforms (Windows, Linux, macOS)
+   - Test with large files and complex directory structures
+
+3. **Performance Optimization**:
+   - Profile the code to identify bottlenecks
+   - Optimize critical paths for better performance
+   - Implement memory-efficient algorithms for large files
+
+4. **Bug Fixing**:
+   - Address any issues or bugs found during testing
+   - Fix edge cases and error conditions
+   - Ensure robust error handling throughout the codebase
+
+5. **Documentation**:
+   - Document the API and usage of all libraries
+   - Provide examples for common use cases
+   - Create comprehensive documentation for the command-line utility
 
 ## Conclusion
 
-Porting the Ruby libraries retoc and repak to C++ static libraries is a significant undertaking, but it offers several benefits:
+The proposed strategy for porting the Ruby-based retoc and repak libraries to C++ involves creating three separate static libraries (`pak`, `utoc`, and `ucas`) along with a general-purpose utility CLI (`pak_utoc_ucas.exe`). This approach allows for modular development and usage while avoiding circular dependencies.
 
-1. **Performance**: C++ implementations can be significantly faster than Ruby
-2. **Integration**: Static libraries can be easily integrated into other C++ projects
-3. **Portability**: C++ code can be compiled for various platforms
-4. **Maintenance**: Separate libraries for each file format simplify maintenance
+Each library will focus on its specific file format, with the `pak_utoc_ucas.exe` utility providing a unified interface for working with all three formats. The implementation will leverage modern C++ features and external libraries for compression, encryption, and other functionality.
 
-The proposed architecture with three separate libraries (`pak`, `utoc`, and `ucas`) provides a clean separation of concerns while allowing for efficient integration through well-defined interfaces. The general-purpose utility CLI (`pak_utoc_ucas.exe`) provides a unified interface for working with all three file formats.
-
-By following the implementation strategy outlined in this document, the port can be completed in a systematic and efficient manner, ensuring compatibility with the original Ruby implementations while leveraging the benefits of C++.
+By following this strategy, the C++ port will maintain the functionality of the original Ruby libraries while providing improved performance and integration capabilities for C++ applications.

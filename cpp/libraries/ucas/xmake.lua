@@ -7,10 +7,7 @@ target("ucas")
     add_deps("liboodle")
     
     -- Add dependencies on any packages:
-    --
-    -- Example:
-    -- add_packages("spdlog")
-    --
-    -- See xmake.lua in the root folder for a list of available packages.
-    --
-    -- If you want a package which isn't available, please just stop and ask :)
+    add_packages("zlib", { public = true })
+    add_packages("zstd", { public = true })
+    add_packages("lz4", { public = true })
+    add_packages("openssl", { public = true })

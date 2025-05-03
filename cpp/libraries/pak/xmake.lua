@@ -6,13 +6,9 @@ target("pak")
     -- Add dependencies on any other C++ static libraries in this folder:
     add_deps("liboodle")
     
-    -- If this should rely, for example, on "utoc" and/or "ucas" then use add_deps("utoc", "ucas")
-    
     -- Add dependencies on any packages:
-    --
-    -- Example:
-    -- add_packages("spdlog")
-    --
-    -- See xmake.lua in the root folder for a list of available packages.
-    --
-    -- If you want a package which isn't available, please just stop and ask :)
+    add_packages("zlib", { public = true })
+    add_packages("zstd", { public = true })
+    add_packages("lz4", { public = true })
+    add_packages("openssl", { public = true })
+    add_packages("unordered_dense", { public = true })

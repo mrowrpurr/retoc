@@ -1,165 +1,169 @@
 # Overview of retoc, repak, and Unreal Engine File Formats
 
-This document provides a comprehensive overview of the projects retoc and repak, as well as the Unreal Engine file formats they work with: .pak, .utoc, and .ucas.
+## Introduction
 
-## Unreal Engine File Formats
-
-Unreal Engine uses different file formats for packaging and storing game assets, which have evolved across engine versions:
-
-### .pak Files
-
-The .pak file format is Unreal Engine's traditional archive format used for packaging game assets in Unreal Engine 4 and still supported in Unreal Engine 5.
-
-**Key Characteristics:**
-- Self-contained archive files similar to ZIP or TAR, but optimized for game assets
-- Store "Legacy Assets" (.uasset, .uexp, .ubulk files)
-- Support compression (Zlib, Gzip, Zstd, LZ4, Oodle)
-- Support encryption (AES-256)
-- Include an index for efficient file lookup
-- Use mount points for virtual file paths
-
-**Structure:**
-1. **Data Blocks**: The actual file contents
-2. **Index**: Directory of files in the archive
-3. **Secondary Indices** (V10+): Additional indices for improved performance
-4. **Footer**: Metadata about the archive
-
-**Version Evolution:**
-- Evolved from V1 (pre-UE4.0) to V11 (UE4.26-5.3+)
-- Added features like compression, encryption, path hash index, and more
-- Latest version (V11) fixed an FNV64 hash bug and is used in modern games
-
-### .utoc and .ucas Files (IoStore)
-
-The IoStore container system was introduced in Unreal Engine 5 as a replacement for the .pak file system, offering improved performance and features. It uses a split approach with two file types:
-
-#### .utoc Files (Unreal Table of Contents)
-
-**Key Characteristics:**
-- Contain metadata and indexing information
-- Store chunk IDs, offsets, and sizes
-- Include compression information
-- Provide directory indexing
-- Support encryption
-- Store container header information
-
-**Structure:**
-1. **Header**: Magic number, version info, container flags
-2. **Chunk IDs**: Identifiers for chunks in the .ucas file
-3. **Chunk Offsets and Lengths**: Location and size of chunks
-4. **Hash Map**: Perfect hash table for chunk lookup
-5. **Compression Blocks**: Information about compressed blocks
-6. **Compression Methods**: Names of compression methods used
-7. **Directory Index**: Hierarchical file structure
-8. **Chunk Metadata**: Additional information about chunks
-
-**Version Evolution:**
-- Evolved from Initial (UE4.26) to ReplaceIoChunkHashWithIoHash (UE5.5+)
-- Added features like directory index, partition size, perfect hash, and more
-
-#### .ucas Files (Unreal Content Archive Storage)
-
-**Key Characteristics:**
-- Store the actual content/data of game assets
-- Support compressed data
-- Support encrypted data
-- Organized in blocks for efficient access
-- Can be partitioned for better performance
-
-**Structure:**
-- Series of data blocks containing the raw asset data
-- No file header or metadata (all metadata is in the .utoc file)
-- Blocks may be compressed and/or encrypted
-
-**Partitioning:**
-- .ucas files can be split into multiple partitions (e.g., global.ucas.0, global.ucas.1)
-- Partitioning allows for better parallel loading and reduced file size
-- Partition information is stored in the .utoc file
-
-## Asset Formats
-
-Unreal Engine uses two primary asset formats:
-
-### Legacy Assets
-
-Used in Unreal Engine 4 and still supported in Unreal Engine 5:
-- Stored in .pak files
-- Split into multiple files (.uasset, .uexp, .ubulk)
-- More compatible with older engine versions
-
-### Zen Assets
-
-Introduced in Unreal Engine 5:
-- Stored in IoStore containers (.utoc/.ucas)
-- More efficient storage and loading
-- Better performance for modern platforms
+This document provides an overview of the retoc and repak projects, as well as the Unreal Engine file formats they work with: .pak, .utoc, and .ucas. These projects and file formats are essential for working with Unreal Engine game assets, particularly for modding, asset extraction, and conversion between different Unreal Engine versions.
 
 ## Projects
 
 ### retoc
 
-retoc is a CLI tool for packing/unpacking Unreal Engine IoStore containers (.utoc/.ucas) as well as converting between Zen assets and Legacy assets.
+retoc is a CLI tool for working with Unreal Engine's IoStore containers (.utoc/.ucas) and converting between different asset formats. It serves as a comprehensive solution for handling Unreal Engine's newer asset storage system.
 
 **Key Features:**
-- Extract manifest from .utoc files
-- Show container information
-- List files in .utoc (directory index)
-- Extract chunks (files) from .utoc
-- Convert assets from Zen format to Legacy format
-- Convert assets from Legacy format to Zen format
+- Extract and manipulate IoStore containers (.utoc/.ucas files)
+- Convert between Zen assets (used with IoStore) and Legacy assets (used with .pak files)
 - Handle shader libraries during conversion
+- Support a wide range of Unreal Engine versions (particularly UE 5.3+)
 
-**Usage Examples:**
-```console
-# Converting Zen to Legacy
-$ retoc to-legacy AbioticFactor/Content/Paks legacy_P.pak
-
-# Converting Legacy to Zen
-$ retoc to-zen legacy_P.pak iostore.utoc --version UE5_4
-```
+retoc is particularly valuable for:
+- Game modders who need to work with UE5 games
+- Developers migrating assets between different UE versions
+- Tools developers building asset pipelines for UE games
 
 ### repak
 
-repak is a library and CLI tool for working with Unreal Engine .pak files, providing functionality for reading, writing, and manipulating .pak files across various Unreal Engine versions.
+repak is a library and CLI tool for working with Unreal Engine .pak files. It provides functionality for reading, writing, and manipulating .pak files across various Unreal Engine versions.
 
 **Key Features:**
-- Support for all major .pak file versions (V2-V11)
-- Efficient reading and writing of .pak files
-- Support for compression (Zlib, Gzip, Zstd, LZ4, Oodle)
-- Reading of AES-encrypted .pak files
-- 2-30x faster unpacking speeds compared to UnrealPak
+- Efficient .pak file handling with 2-30x faster unpacking than the official UnrealPak tool
+- Support for all major .pak file versions (UE4.0 to UE5.3+)
+- Comprehensive support for compression, encryption, and various index formats
+- Clean API for integration with other applications
 
-**Usage Examples:**
-```console
-# Packing files
-$ repak pack -v mod
+repak is integrated with retoc to provide complete support for both .pak files and IoStore containers, enabling seamless conversion between the two asset storage systems.
 
-# Unpacking files
-$ repak --aes-key 0x12345678 unpack MyEncryptedGame.pak
-```
+## Unreal Engine File Formats
 
-## Relationship Between Formats and Projects
+### .pak Files
 
-The relationship between these file formats and projects can be summarized as follows:
+.pak files are Unreal Engine's traditional archive format used for packaging game assets in UE4 and early UE5 versions. They serve as containers for game files, allowing for efficient storage, loading, and distribution of game content.
 
-1. **Legacy Assets in .pak Files**:
-   - Traditional asset format used in UE4
-   - Managed by repak for packing/unpacking
+**Key Characteristics:**
+- Container format similar to ZIP or TAR, but tailored for Unreal Engine
+- Support for compression to reduce file size
+- Support for encryption to protect content
+- Efficient indexing for fast asset lookup
+- Mount point system for virtual file paths
 
-2. **Zen Assets in IoStore Containers**:
-   - Newer asset format introduced in UE5
-   - Stored in .utoc/.ucas files
-   - Managed by retoc for packing/unpacking
+**Structure:**
+1. **File Header:** Contains a magic number and version information
+2. **Data Blocks:** The actual file content, potentially compressed and/or encrypted
+3. **Index:** A directory of all files in the .pak
+4. **Footer:** Contains information about the index location and encryption
 
-3. **Conversion Between Formats**:
-   - retoc provides conversion between Zen and Legacy assets
-   - Allows for compatibility across different engine versions
-   - Handles shader libraries during conversion
+**Version Evolution:**
+The .pak format has evolved from V1 (pre-UE4.0) to V11 (UE4.26-5.3+), with significant improvements in compression, encryption, and indexing along the way.
 
-4. **Integration Between Projects**:
-   - retoc uses repak for .pak file handling during conversion
-   - This integration provides a complete solution for working with both asset formats
+### .utoc Files
+
+.utoc (Unreal Table of Contents) files are part of Unreal Engine's IoStore container system introduced in UE5. They contain metadata and indexing information for the content stored in corresponding .ucas files.
+
+**Key Characteristics:**
+- Contains a table of contents for the IoStore container
+- Stores chunk IDs, offsets, and sizes for assets in the .ucas file
+- Includes compression information
+- Provides directory indexing for efficient file lookup
+- Support for encryption
+
+**Structure:**
+1. **Header:** Contains a magic number and version information
+2. **Chunk IDs:** Identifiers for chunks of data in the .ucas file
+3. **Chunk Offsets and Lengths:** Location and size of each chunk
+4. **Hash Map:** Perfect hash table for chunk lookup
+5. **Compression Blocks:** Information about compressed blocks
+6. **Directory Index:** Hierarchical file structure
+7. **Chunk Metadata:** Additional information about each chunk
+
+**Version Evolution:**
+The .utoc format has evolved from Initial (UE4.26) to ReplaceIoChunkHashWithIoHash (UE5.5+), with improvements in hashing, indexing, and metadata handling.
+
+### .ucas Files
+
+.ucas (Unreal Content Archive Storage) files store the actual content/data of game assets, while the corresponding .utoc files contain the metadata and indexing information needed to access this content.
+
+**Key Characteristics:**
+- Store the actual asset data in chunks
+- Support for compressed data
+- Support for encrypted data
+- Organized in blocks for efficient access
+- Can be partitioned for better performance
+
+**Structure:**
+The .ucas file consists of a series of data blocks, each containing the raw data for a specific chunk. The location and size of each block are specified in the corresponding .utoc file.
+
+**Compression Support:**
+- Zlib
+- Gzip
+- Zstd
+- LZ4
+- Oodle
+
+## Relationship Between Formats
+
+In Unreal Engine's asset storage systems, there are two main approaches:
+
+1. **Traditional .pak System (UE4 and early UE5):**
+   - Assets are stored in .pak files
+   - Each asset consists of multiple files (.uasset, .uexp, .ubulk)
+   - Simple but less efficient for modern games
+
+2. **IoStore System (UE5):**
+   - Assets are stored in .utoc/.ucas file pairs
+   - Assets are divided into "chunks" of data
+   - More efficient for loading and streaming
+   - Better memory management
+
+retoc provides the ability to convert between these two systems, allowing for compatibility across different engine versions and configurations.
+
+## Asset Formats
+
+Unreal Engine has two primary asset storage formats:
+
+1. **Legacy Assets:**
+   - Used in Unreal Engine 4 and still supported in Unreal Engine 5
+   - Stored in .pak files
+   - Split into multiple files (.uasset, .uexp, .ubulk)
+   - More compatible with older engine versions
+
+2. **Zen Assets:**
+   - Introduced in Unreal Engine 5
+   - Stored in IoStore containers (.utoc/.ucas)
+   - More efficient storage and loading
+   - Better performance for modern platforms
+
+The conversion between these formats involves:
+- Asset parsing and reconstruction
+- Chunk creation and extraction
+- Dependency resolution
+- Shader conversion
+
+## Current Implementation Status
+
+The retoc and repak projects are currently in development, with the following status:
+
+1. **Ruby Implementation**: The original implementation in Ruby is functional and provides comprehensive support for working with .pak, .utoc, and .ucas files.
+
+2. **C++ Port**: A C++ port is currently in progress, with the following components:
+   - Static libraries for pak, utoc, and ucas file formats
+   - A general-purpose utility CLI (pak_utoc_ucas.exe)
+   - Integration with the Oodle compression library
+
+3. **Current Challenges**:
+   - The C++ implementation is still incomplete, with many stub/placeholder functions
+   - The binary doesn't fully support reading real .utoc files yet
+   - The .pak command has stability issues
+   - Full binary format parsing according to the documentation needs to be implemented
 
 ## Conclusion
 
-Understanding these file formats and projects is essential for working with Unreal Engine assets, especially when dealing with different engine versions or converting between formats. The retoc and repak projects provide powerful tools for manipulating these formats, enabling efficient asset management and conversion for Unreal Engine games.
+The retoc and repak projects provide powerful tools for working with Unreal Engine's asset storage systems. By understanding the .pak, .utoc, and .ucas file formats, developers and modders can effectively manipulate game assets across different Unreal Engine versions.
+
+These tools and the knowledge of the underlying file formats are essential for:
+- Game modding
+- Asset extraction and conversion
+- Cross-version compatibility
+- Custom asset pipelines
+- Game analysis and research
+
+The ongoing C++ port will provide improved performance and better integration capabilities for C++ applications, making these tools even more valuable for developers and modders working with Unreal Engine assets.
