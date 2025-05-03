@@ -31,7 +31,7 @@ This document provides guidance for implementing a C++ static library for readin
    - **Oodle** (optional but recommended) - For Oodle compression
      ```cpp
      // Note: Oodle is proprietary and requires a license from Epic Games/RAD Game Tools
-     // You'll need to implement a dynamic loading mechanism similar to retoc's oodle_loader
+     // You'll need to implement a dynamic loading mechanism similar to retoc's liboodle
      ```
 
 2. **Cryptography Library**:

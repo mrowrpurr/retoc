@@ -1,10 +1,10 @@
-target("utoc")
+target("liboodle")
     set_kind("static")
     add_files("src/*.cpp")
     add_includedirs("include", { public = true })
-    
-    -- Add dependencies on any other C++ static libraries in this folder:
-    add_deps("oodle_loader")
+    if is_plat("windows") then
+        add_syslinks("advapi32")
+    end
     
     -- Add dependencies on any packages:
     --

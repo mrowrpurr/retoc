@@ -1,10 +1,10 @@
-target("oodle_loader_example")
+target("liboodle_example")
     set_kind("binary")
     add_files("src/*.cpp")
     add_includedirs("include", { public = true })
     
     -- Add dependencies on any other C++ static libraries in this folder:
-    add_deps("oodle_loader")
+    add_deps("liboodle")
     
     -- Add dependencies on any packages:
     --

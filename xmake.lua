@@ -4,18 +4,25 @@ add_rules("mode.debug", "mode.release")
 set_languages("c++23")
 
 add_requires(
-    "catch2",
-    "spdlog",
-    "reproc",
-    "trompeloeil",
-    "xxhash",
+    -- Common dependencies for pak + utoc + ucas.
+    "zlib",
+    "zstd",
+    "lz4",
+    "openssl",
+    
+    -- utoc
+    "blake3",
+    
+    -- General dependencies
     "unordered_dense",
-    "indicators",
-    "thread-pool",
+    "spdlog",
     "nlohmann_json",
-    "boost_di",
+    
+    -- Command Line utilities
     "cli11",
-    "stb"
+    "osmanip",
+    "indicators",
+    "rang"
 )
 
 -- Add Windows-specific settings
@@ -25,7 +32,8 @@ if is_plat("windows") then
     add_defines("WIN32_LEAN_AND_MEAN")
 end
 
-includes("cpp/*/xmake.lua")
+includes("cpp/libraries/*/xmake.lua")
+includes("cpp/programs/*/xmake.lua")
 includes("cpp/examples/*/xmake.lua")
 
 -- TODO: we'll make a cpp/tests/ folder too! with catch2 etc, but notyet.

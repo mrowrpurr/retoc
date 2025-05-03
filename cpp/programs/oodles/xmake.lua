@@ -1,13 +1,10 @@
-target("oodle_loader")
-    set_kind("static")
+target("oodles")
+    set_kind("binary")
     add_files("src/*.cpp")
     add_includedirs("include", { public = true })
-    if is_plat("windows") then
-        add_syslinks("advapi32")
-    end
     
     -- Add dependencies on any other C++ static libraries in this folder:
-    add_deps("oodle_loader")
+    add_deps("liboodle")
     
     -- Add dependencies on any packages:
     --

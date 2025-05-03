@@ -1,12 +1,10 @@
-target("pak")
+target("utoc")
     set_kind("static")
     add_files("src/*.cpp")
     add_includedirs("include", { public = true })
     
     -- Add dependencies on any other C++ static libraries in this folder:
-    add_deps("oodle_loader")
-    
-    -- If this should rely, for example, on "utoc" and/or "ucas" then use add_deps("utoc", "ucas")
+    add_deps("liboodle")
     
     -- Add dependencies on any packages:
     --

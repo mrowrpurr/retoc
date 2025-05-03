@@ -38,10 +38,10 @@ pub fn compress<S: Write>(
             output.write_all(&buf)?;
         }
         CompressionMethod::Oodle => {
-            let buffer = oodle_loader::oodle()?.compress(
+            let buffer = liboodle::oodle()?.compress(
                 input,
-                oodle_loader::Compressor::Mermaid,
-                oodle_loader::CompressionLevel::Normal,
+                liboodle::Compressor::Mermaid,
+                liboodle::CompressionLevel::Normal,
             )?;
             output.write_all(&buffer)?;
         }
@@ -61,7 +61,7 @@ pub fn decompress(compression: CompressionMethod, input: &[u8], output: &mut [u8
             lz4_flex::block::decompress_into(input, output)?;
         }
         CompressionMethod::Oodle => {
-            let status = oodle_loader::oodle()?.decompress(input, output);
+            let status = liboodle::oodle()?.decompress(input, output);
             if status < 0 || status as usize != output.len() {
                 bail!(
                     "Oodle decompression failed: expected {} output bytes, got {}",

@@ -254,7 +254,7 @@ pub fn decompress(compression: CompressionMethod, input: &[u8], output: &mut [u8
             lz4_flex::block::decompress_into(input, output)?;
         }
         CompressionMethod::Oodle => {
-            let status = oodle_loader::oodle()?.decompress(input, output);
+            let status = liboodle::oodle()?.decompress(input, output);
             if status < 0 || status as usize != output.len() {
                 bail!(
                     "Oodle decompression failed: expected {} output bytes, got {}",
@@ -595,7 +595,7 @@ pub fn decompress(compression: CompressionMethod, input: &[u8], output: &mut [u8
     match compression {
         // ...
         CompressionMethod::Oodle => {
-            let status = oodle_loader::oodle()?.decompress(input, output);
+            let status = liboodle::oodle()?.decompress(input, output);
             if status < 0 || status as usize != output.len() {
                 bail!(
                     "Oodle decompression failed: expected {} output bytes, got {}",

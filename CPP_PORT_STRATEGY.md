@@ -523,7 +523,7 @@ Options:
 
 1. **Oodle Compression**:
    - License: Proprietary (requires licensing from Epic Games/RAD Game Tools)
-   - Integration: Dynamic loading at runtime (similar to the existing oodle_loader)
+   - Integration: Dynamic loading at runtime (similar to the existing liboodle)
 
 2. **Threading Library**:
    - **TBB**: For parallel processing

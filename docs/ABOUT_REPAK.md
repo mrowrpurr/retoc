@@ -38,7 +38,7 @@ repak/
 │   ├── src/                  # CLI source code
 │   │   └── main.rs           # CLI entry point
 │   └── tests/                # CLI tests
-└── oodle_loader/             # Optional Oodle compression support
+└── liboodle/             # Optional Oodle compression support
     └── src/                  # Oodle loader source code
         └── lib.rs            # Oodle loader entry point
 ```
