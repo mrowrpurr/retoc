@@ -16,8 +16,9 @@ This documentation provides a comprehensive guide to the .utoc (Unreal Table of 
 8. [UTOC Encryption](UTOC_ENCRYPTION.md) - Details on the encryption system
 9. [UTOC Partitioning](UTOC_PARTITIONING.md) - Information on the partitioning system
 10. [UTOC UCAS Relationship](UTOC_UCAS_RELATIONSHIP.md) - How UTOC and UCAS files work together
-11. [UTOC Research Notes](UTOC_RESEARCH_NOTES_SCRATCHPAD.md) - Research notes and findings
-12. [UTOC 010 Editor Template](utoc.bt) - Binary template for 010 Editor
+11. [CPP Support Notes](CPP_SUPPORT_NOTES.md) - Implementation notes for C++ developers
+12. [UTOC Research Notes](UTOC_RESEARCH_NOTES_SCRATCHPAD.md) - Research notes and findings
+13. [UTOC 010 Editor Template](utoc.bt) - Binary template for 010 Editor
 
 ## Key Concepts
 

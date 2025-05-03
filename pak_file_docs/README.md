@@ -16,9 +16,11 @@ This documentation is organized into several files:
 
 4. **[PAK_ENCRYPTION_GUIDE.md](PAK_ENCRYPTION_GUIDE.md)** - Comprehensive guide to encryption in .pak files, including implementation details and best practices.
 
-5. **[PAK_010_EDITOR_TEMPLATE.bt](PAK_010_EDITOR_TEMPLATE.bt)** - A template for the 010 Editor hex editor that allows for visual inspection and parsing of .pak files.
+5. **[CPP_SUPPORT_NOTES.md](CPP_SUPPORT_NOTES.md)** - Implementation notes for creating a C++ static library with full .pak file support, including dependencies, challenges, and code examples.
 
-6. **[PAK_RESEARCH_NOTES_SCRATCHPAD.md](PAK_RESEARCH_NOTES_SCRATCHPAD.md)** - Research notes and findings from analyzing the .pak file format.
+6. **[PAK_010_EDITOR_TEMPLATE.bt](PAK_010_EDITOR_TEMPLATE.bt)** - A template for the 010 Editor hex editor that allows for visual inspection and parsing of .pak files.
+
+7. **[PAK_RESEARCH_NOTES_SCRATCHPAD.md](PAK_RESEARCH_NOTES_SCRATCHPAD.md)** - Research notes and findings from analyzing the .pak file format.
 
 ## Key Features of .pak Files
 

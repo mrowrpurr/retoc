@@ -44,7 +44,16 @@ This document contains research notes and findings from analyzing the retoc code
 - Version differences
 - Implementation notes
 
-### 4. [ucas.bt](ucas.bt) and [ucas_advanced.bt](ucas_advanced.bt)
+### 4. [CPP_SUPPORT_NOTES.md](CPP_SUPPORT_NOTES.md)
+
+This document provides guidance for implementing a C++ static library for reading and writing UCAS files:
+- Dependencies and third-party libraries
+- Implementation challenges and solutions
+- Design considerations for a C++ library
+- Performance optimization techniques
+- Code examples and pseudocode
+
+### 5. [ucas.bt](ucas.bt) and [ucas_advanced.bt](ucas_advanced.bt)
 
 These are 010 Editor binary templates for parsing UCAS files:
 - `ucas.bt`: A basic template that shows the raw data in the UCAS file
