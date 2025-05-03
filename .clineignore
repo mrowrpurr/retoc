@@ -1,0 +1,6 @@
+/target
+/out
+/compile_commands
+/output
+/build
+/.xmake

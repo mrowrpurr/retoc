@@ -1,2 +1,10 @@
-/target
-/out
+target
+out
+compile_commands
+output
+build
+.xmake
+repak
+target
+*.dll
+example_files
